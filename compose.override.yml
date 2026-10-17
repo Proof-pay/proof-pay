@@ -39,10 +39,9 @@ services:
       dockerfile: backend/Dockerfile
     # command: sleep infinity  # Infinite loop to keep container alive doing nothing
     command:
-      - fastapi
-      - dev
-      - --host
-      - "0.0.0.0"
+      - bash
+      - -c
+      - bash scripts/prestart.sh && exec fastapi dev --host 0.0.0.0
     develop:
       watch:
         - path: ./backend
@@ -75,6 +74,8 @@ services:
       - "1025:1025"
 
   playwright:
+    profiles:
+      - test
     build:
       context: .
       dockerfile: frontend/Dockerfile.playwright
