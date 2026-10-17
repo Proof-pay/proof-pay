@@ -52,18 +52,19 @@ bun run build
 
 The build is written to `backend/app/frontend` and served by FastAPI at <http://localhost:8000>. Rebuild the frontend after making frontend changes.
 
-## Full Stack with Docker Compose
+## Full Stack with Docker Compose and Hot Reload
 
-To run the backend and built frontend in Docker Compose:
+From the repository root, build the development images and start the existing services:
 
 ```bash
-docker compose run --rm backend bash scripts/prestart.sh
-docker compose watch
+docker compose up -d --build
 ```
 
 Now you can open these URLs:
 
-Application, with the frontend and API served by FastAPI: <http://localhost:8000>
+Frontend with Vite hot reload: <http://localhost:5173>
+
+Backend API: <http://localhost:8000>
 
 Automatic interactive API documentation with Swagger UI: <http://localhost:8000/docs>
 
@@ -72,6 +73,10 @@ Adminer, database web administration: <http://localhost:8080>
 Traefik UI, to see how the routes are being handled by the proxy: <http://localhost:8090>
 
 Mailpit: <http://localhost:8025>
+
+After the first build, use `docker compose up -d` to start the same development stack. Saving files under `frontend/` updates Vite; saving Python files under `backend/app/` restarts the Uvicorn worker. The frontend calls the backend at `http://localhost:8000`, which allows the Vite origin `http://localhost:5173`. Open the Vite URL for live frontend changes. Port 8000 and the Traefik route on port 80 serve a static frontend snapshot kept for FastAPI compatibility; they do not update on source saves.
+
+Changes to frontend dependencies (`frontend/package.json` or `bun.lock`), backend dependencies (`backend/pyproject.toml` or `uv.lock`), Dockerfiles, or backend scripts require rebuilding the affected image with `docker compose up -d --build`. Environment variable changes require recreating the affected service with `docker compose up -d --force-recreate <service>`. Source saves need neither command.
 
 Stop a locally running FastAPI server before starting the Compose backend because both use port `8000`.
 
@@ -85,16 +90,16 @@ Stop a locally running FastAPI server before starting the Compose backend becaus
 
 The main `compose.yml` file contains the configuration shared by the whole stack. Docker Compose loads it automatically.
 
-The `compose.override.yml` file adds local development settings, such as mounting the source code as a volume. Docker Compose also loads it automatically and applies it on top of `compose.yml`.
+The `compose.override.yml` file adds local development settings, including bind mounts for the frontend and backend source, Vite on port 5173, and Uvicorn reload. Docker Compose loads it automatically and applies it on top of `compose.yml`. Bun dependencies remain in `/app/node_modules` outside the frontend mount; Python dependencies remain in `/app/.venv` outside the backend mount. The database uses its existing named volume.
 
 The `compose.deploy.yml` file contains the deployment-specific settings, including HTTPS and automatic certificate handling. It is explicitly combined with `compose.yml` when deploying the application.
 
 The backend reads local settings from the `.env` file. Docker Compose also uses it for variable interpolation and passes the settings each container needs.
 
-After changing variables, make sure you restart the stack:
+After changing variables, recreate the affected service:
 
 ```bash
-docker compose watch
+docker compose up -d --force-recreate <service>
 ```
 
 ## The `.env` File

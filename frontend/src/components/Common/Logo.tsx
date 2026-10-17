@@ -1,60 +1,61 @@
 import { Link } from "@tanstack/react-router"
-
-import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
-import icon from "/assets/images/fastapi-icon.svg"
-import iconLight from "/assets/images/fastapi-icon-light.svg"
-import logo from "/assets/images/fastapi-logo.svg"
-import logoLight from "/assets/images/fastapi-logo-light.svg"
 
-interface LogoProps {
-  variant?: "full" | "icon" | "responsive"
-  className?: string
-  asLink?: boolean
-}
+const logoSrc = "/assets/images/proofpay-logo.png"
 
 export function Logo({
   variant = "full",
   className,
   asLink = true,
-}: LogoProps) {
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
-
-  const fullLogo = isDark ? logoLight : logo
-  const iconLogo = isDark ? iconLight : icon
-
-  const content =
-    variant === "responsive" ? (
-      <>
-        <img
-          src={fullLogo}
-          alt="FastAPI"
-          className={cn(
-            "h-6 w-auto group-data-[collapsible=icon]:hidden",
-            className,
-          )}
-        />
-        <img
-          src={iconLogo}
-          alt="FastAPI"
-          className={cn(
-            "size-5 hidden group-data-[collapsible=icon]:block",
-            className,
-          )}
-        />
-      </>
-    ) : (
+}: {
+  variant?: "full" | "icon" | "responsive"
+  className?: string
+  asLink?: boolean
+}) {
+  const fullLogo = (
+    <span
+      className={cn(
+        "relative block h-10 aspect-[9/2] overflow-hidden rounded-sm bg-[#D1FAE5]",
+        variant === "responsive" && "group-data-[collapsible=icon]:hidden",
+        className,
+      )}
+    >
       <img
-        src={variant === "full" ? fullLogo : iconLogo}
-        alt="FastAPI"
-        className={cn(variant === "full" ? "h-6 w-auto" : "size-5", className)}
+        src={logoSrc}
+        alt="ProofPay"
+        className="absolute left-0 top-1/2 w-full -translate-y-1/2"
       />
-    )
+    </span>
+  )
 
-  if (!asLink) {
-    return content
-  }
+  const iconLogo = (
+    <span
+      className={cn(
+        "relative block size-9 shrink-0 overflow-hidden rounded-sm bg-[#D1FAE5]",
+        variant === "responsive" &&
+          "hidden group-data-[collapsible=icon]:block",
+        variant === "icon" && className,
+      )}
+    >
+      <img
+        src={logoSrc}
+        alt="ProofPay"
+        className="absolute -left-[22px] -top-[82px] max-w-none size-[200px]"
+      />
+    </span>
+  )
 
-  return <Link to="/">{content}</Link>
+  const content = (
+    <span className="inline-flex items-center">
+      {variant !== "icon" && fullLogo}
+      {variant !== "full" && iconLogo}
+    </span>
+  )
+  return asLink ? (
+    <Link to="/dashboard" aria-label="ProofPay dashboard">
+      {content}
+    </Link>
+  ) : (
+    content
+  )
 }

@@ -18,6 +18,17 @@ import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as RPublicReceiptIdRouteImport } from './routes/r/$publicReceiptId'
+import { Route as LayoutDashboardIndexRouteImport } from './routes/_layout/dashboard/index'
+import { Route as PPublicIdIndexRouteImport } from './routes/p/$publicId.index'
+import { Route as PPublicIdStatusRouteImport } from './routes/p/$publicId.status'
+import { Route as LayoutDashboardPaymentLinksIndexRouteImport } from './routes/_layout/dashboard/payment-links/index'
+import { Route as LayoutDashboardPaymentLinksNewRouteImport } from './routes/_layout/dashboard/payment-links/new'
+import { Route as LayoutDashboardReceiptsIndexRouteImport } from './routes/_layout/dashboard/receipts/index'
+import { Route as LayoutDashboardTransactionsIndexRouteImport } from './routes/_layout/dashboard/transactions/index'
+import { Route as LayoutDashboardTransactionsIdRouteImport } from './routes/_layout/dashboard/transactions/$id'
+import { Route as LayoutDashboardPaymentLinksIdIndexRouteImport } from './routes/_layout/dashboard/payment-links/$id.index'
+import { Route as LayoutDashboardPaymentLinksIdQrRouteImport } from './routes/_layout/dashboard/payment-links/$id.qr'
 
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
@@ -63,6 +74,68 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
+const RPublicReceiptIdRoute = RPublicReceiptIdRouteImport.update({
+  id: '/r/$publicReceiptId',
+  path: '/r/$publicReceiptId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LayoutDashboardIndexRoute = LayoutDashboardIndexRouteImport.update({
+  id: '/dashboard/',
+  path: '/dashboard/',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const PPublicIdIndexRoute = PPublicIdIndexRouteImport.update({
+  id: '/p/$publicId/',
+  path: '/p/$publicId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PPublicIdStatusRoute = PPublicIdStatusRouteImport.update({
+  id: '/p/$publicId/status',
+  path: '/p/$publicId/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LayoutDashboardPaymentLinksIndexRoute =
+  LayoutDashboardPaymentLinksIndexRouteImport.update({
+    id: '/dashboard/payment-links/',
+    path: '/dashboard/payment-links/',
+    getParentRoute: () => LayoutRoute,
+  } as any)
+const LayoutDashboardPaymentLinksNewRoute =
+  LayoutDashboardPaymentLinksNewRouteImport.update({
+    id: '/dashboard/payment-links/new',
+    path: '/dashboard/payment-links/new',
+    getParentRoute: () => LayoutRoute,
+  } as any)
+const LayoutDashboardReceiptsIndexRoute =
+  LayoutDashboardReceiptsIndexRouteImport.update({
+    id: '/dashboard/receipts/',
+    path: '/dashboard/receipts/',
+    getParentRoute: () => LayoutRoute,
+  } as any)
+const LayoutDashboardTransactionsIndexRoute =
+  LayoutDashboardTransactionsIndexRouteImport.update({
+    id: '/dashboard/transactions/',
+    path: '/dashboard/transactions/',
+    getParentRoute: () => LayoutRoute,
+  } as any)
+const LayoutDashboardTransactionsIdRoute =
+  LayoutDashboardTransactionsIdRouteImport.update({
+    id: '/dashboard/transactions/$id',
+    path: '/dashboard/transactions/$id',
+    getParentRoute: () => LayoutRoute,
+  } as any)
+const LayoutDashboardPaymentLinksIdIndexRoute =
+  LayoutDashboardPaymentLinksIdIndexRouteImport.update({
+    id: '/dashboard/payment-links/$id/',
+    path: '/dashboard/payment-links/$id/',
+    getParentRoute: () => LayoutRoute,
+  } as any)
+const LayoutDashboardPaymentLinksIdQrRoute =
+  LayoutDashboardPaymentLinksIdQrRouteImport.update({
+    id: '/dashboard/payment-links/$id/qr',
+    path: '/dashboard/payment-links/$id/qr',
+    getParentRoute: () => LayoutRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
@@ -73,6 +146,17 @@ export interface FileRoutesByFullPath {
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/r/$publicReceiptId': typeof RPublicReceiptIdRoute
+  '/p/$publicId/status': typeof PPublicIdStatusRoute
+  '/dashboard/': typeof LayoutDashboardIndexRoute
+  '/p/$publicId/': typeof PPublicIdIndexRoute
+  '/dashboard/payment-links/new': typeof LayoutDashboardPaymentLinksNewRoute
+  '/dashboard/transactions/$id': typeof LayoutDashboardTransactionsIdRoute
+  '/dashboard/payment-links/': typeof LayoutDashboardPaymentLinksIndexRoute
+  '/dashboard/receipts/': typeof LayoutDashboardReceiptsIndexRoute
+  '/dashboard/transactions/': typeof LayoutDashboardTransactionsIndexRoute
+  '/dashboard/payment-links/$id/qr': typeof LayoutDashboardPaymentLinksIdQrRoute
+  '/dashboard/payment-links/$id/': typeof LayoutDashboardPaymentLinksIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -82,7 +166,18 @@ export interface FileRoutesByTo {
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/r/$publicReceiptId': typeof RPublicReceiptIdRoute
   '/': typeof LayoutIndexRoute
+  '/p/$publicId/status': typeof PPublicIdStatusRoute
+  '/dashboard': typeof LayoutDashboardIndexRoute
+  '/p/$publicId': typeof PPublicIdIndexRoute
+  '/dashboard/payment-links/new': typeof LayoutDashboardPaymentLinksNewRoute
+  '/dashboard/transactions/$id': typeof LayoutDashboardTransactionsIdRoute
+  '/dashboard/payment-links': typeof LayoutDashboardPaymentLinksIndexRoute
+  '/dashboard/receipts': typeof LayoutDashboardReceiptsIndexRoute
+  '/dashboard/transactions': typeof LayoutDashboardTransactionsIndexRoute
+  '/dashboard/payment-links/$id/qr': typeof LayoutDashboardPaymentLinksIdQrRoute
+  '/dashboard/payment-links/$id': typeof LayoutDashboardPaymentLinksIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,7 +189,18 @@ export interface FileRoutesById {
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/r/$publicReceiptId': typeof RPublicReceiptIdRoute
   '/_layout/': typeof LayoutIndexRoute
+  '/p/$publicId/status': typeof PPublicIdStatusRoute
+  '/_layout/dashboard/': typeof LayoutDashboardIndexRoute
+  '/p/$publicId/': typeof PPublicIdIndexRoute
+  '/_layout/dashboard/payment-links/new': typeof LayoutDashboardPaymentLinksNewRoute
+  '/_layout/dashboard/transactions/$id': typeof LayoutDashboardTransactionsIdRoute
+  '/_layout/dashboard/payment-links/': typeof LayoutDashboardPaymentLinksIndexRoute
+  '/_layout/dashboard/receipts/': typeof LayoutDashboardReceiptsIndexRoute
+  '/_layout/dashboard/transactions/': typeof LayoutDashboardTransactionsIndexRoute
+  '/_layout/dashboard/payment-links/$id/qr': typeof LayoutDashboardPaymentLinksIdQrRoute
+  '/_layout/dashboard/payment-links/$id/': typeof LayoutDashboardPaymentLinksIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,6 +213,17 @@ export interface FileRouteTypes {
     | '/admin'
     | '/items'
     | '/settings'
+    | '/r/$publicReceiptId'
+    | '/p/$publicId/status'
+    | '/dashboard/'
+    | '/p/$publicId/'
+    | '/dashboard/payment-links/new'
+    | '/dashboard/transactions/$id'
+    | '/dashboard/payment-links/'
+    | '/dashboard/receipts/'
+    | '/dashboard/transactions/'
+    | '/dashboard/payment-links/$id/qr'
+    | '/dashboard/payment-links/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -116,7 +233,18 @@ export interface FileRouteTypes {
     | '/admin'
     | '/items'
     | '/settings'
+    | '/r/$publicReceiptId'
     | '/'
+    | '/p/$publicId/status'
+    | '/dashboard'
+    | '/p/$publicId'
+    | '/dashboard/payment-links/new'
+    | '/dashboard/transactions/$id'
+    | '/dashboard/payment-links'
+    | '/dashboard/receipts'
+    | '/dashboard/transactions'
+    | '/dashboard/payment-links/$id/qr'
+    | '/dashboard/payment-links/$id'
   id:
     | '__root__'
     | '/_layout'
@@ -127,7 +255,18 @@ export interface FileRouteTypes {
     | '/_layout/admin'
     | '/_layout/items'
     | '/_layout/settings'
+    | '/r/$publicReceiptId'
     | '/_layout/'
+    | '/p/$publicId/status'
+    | '/_layout/dashboard/'
+    | '/p/$publicId/'
+    | '/_layout/dashboard/payment-links/new'
+    | '/_layout/dashboard/transactions/$id'
+    | '/_layout/dashboard/payment-links/'
+    | '/_layout/dashboard/receipts/'
+    | '/_layout/dashboard/transactions/'
+    | '/_layout/dashboard/payment-links/$id/qr'
+    | '/_layout/dashboard/payment-links/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -136,6 +275,9 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  RPublicReceiptIdRoute: typeof RPublicReceiptIdRoute
+  PPublicIdStatusRoute: typeof PPublicIdStatusRoute
+  PPublicIdIndexRoute: typeof PPublicIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -203,6 +345,83 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutSettingsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/r/$publicReceiptId': {
+      id: '/r/$publicReceiptId'
+      path: '/r/$publicReceiptId'
+      fullPath: '/r/$publicReceiptId'
+      preLoaderRoute: typeof RPublicReceiptIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_layout/dashboard/': {
+      id: '/_layout/dashboard/'
+      path: '/dashboard'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof LayoutDashboardIndexRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/p/$publicId/': {
+      id: '/p/$publicId/'
+      path: '/p/$publicId'
+      fullPath: '/p/$publicId/'
+      preLoaderRoute: typeof PPublicIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$publicId/status': {
+      id: '/p/$publicId/status'
+      path: '/p/$publicId/status'
+      fullPath: '/p/$publicId/status'
+      preLoaderRoute: typeof PPublicIdStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_layout/dashboard/payment-links/': {
+      id: '/_layout/dashboard/payment-links/'
+      path: '/dashboard/payment-links'
+      fullPath: '/dashboard/payment-links/'
+      preLoaderRoute: typeof LayoutDashboardPaymentLinksIndexRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/dashboard/payment-links/new': {
+      id: '/_layout/dashboard/payment-links/new'
+      path: '/dashboard/payment-links/new'
+      fullPath: '/dashboard/payment-links/new'
+      preLoaderRoute: typeof LayoutDashboardPaymentLinksNewRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/dashboard/receipts/': {
+      id: '/_layout/dashboard/receipts/'
+      path: '/dashboard/receipts'
+      fullPath: '/dashboard/receipts/'
+      preLoaderRoute: typeof LayoutDashboardReceiptsIndexRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/dashboard/transactions/': {
+      id: '/_layout/dashboard/transactions/'
+      path: '/dashboard/transactions'
+      fullPath: '/dashboard/transactions/'
+      preLoaderRoute: typeof LayoutDashboardTransactionsIndexRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/dashboard/transactions/$id': {
+      id: '/_layout/dashboard/transactions/$id'
+      path: '/dashboard/transactions/$id'
+      fullPath: '/dashboard/transactions/$id'
+      preLoaderRoute: typeof LayoutDashboardTransactionsIdRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/dashboard/payment-links/$id/': {
+      id: '/_layout/dashboard/payment-links/$id/'
+      path: '/dashboard/payment-links/$id'
+      fullPath: '/dashboard/payment-links/$id/'
+      preLoaderRoute: typeof LayoutDashboardPaymentLinksIdIndexRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/dashboard/payment-links/$id/qr': {
+      id: '/_layout/dashboard/payment-links/$id/qr'
+      path: '/dashboard/payment-links/$id/qr'
+      fullPath: '/dashboard/payment-links/$id/qr'
+      preLoaderRoute: typeof LayoutDashboardPaymentLinksIdQrRouteImport
+      parentRoute: typeof LayoutRoute
+    }
   }
 }
 
@@ -211,6 +430,14 @@ interface LayoutRouteChildren {
   LayoutItemsRoute: typeof LayoutItemsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
+  LayoutDashboardIndexRoute: typeof LayoutDashboardIndexRoute
+  LayoutDashboardPaymentLinksNewRoute: typeof LayoutDashboardPaymentLinksNewRoute
+  LayoutDashboardTransactionsIdRoute: typeof LayoutDashboardTransactionsIdRoute
+  LayoutDashboardPaymentLinksIndexRoute: typeof LayoutDashboardPaymentLinksIndexRoute
+  LayoutDashboardReceiptsIndexRoute: typeof LayoutDashboardReceiptsIndexRoute
+  LayoutDashboardTransactionsIndexRoute: typeof LayoutDashboardTransactionsIndexRoute
+  LayoutDashboardPaymentLinksIdQrRoute: typeof LayoutDashboardPaymentLinksIdQrRoute
+  LayoutDashboardPaymentLinksIdIndexRoute: typeof LayoutDashboardPaymentLinksIdIndexRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
@@ -218,6 +445,15 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutItemsRoute: LayoutItemsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
+  LayoutDashboardIndexRoute: LayoutDashboardIndexRoute,
+  LayoutDashboardPaymentLinksNewRoute: LayoutDashboardPaymentLinksNewRoute,
+  LayoutDashboardTransactionsIdRoute: LayoutDashboardTransactionsIdRoute,
+  LayoutDashboardPaymentLinksIndexRoute: LayoutDashboardPaymentLinksIndexRoute,
+  LayoutDashboardReceiptsIndexRoute: LayoutDashboardReceiptsIndexRoute,
+  LayoutDashboardTransactionsIndexRoute: LayoutDashboardTransactionsIndexRoute,
+  LayoutDashboardPaymentLinksIdQrRoute: LayoutDashboardPaymentLinksIdQrRoute,
+  LayoutDashboardPaymentLinksIdIndexRoute:
+    LayoutDashboardPaymentLinksIdIndexRoute,
 }
 
 const LayoutRouteWithChildren =
@@ -229,6 +465,9 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  RPublicReceiptIdRoute: RPublicReceiptIdRoute,
+  PPublicIdStatusRoute: PPublicIdStatusRoute,
+  PPublicIdIndexRoute: PPublicIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

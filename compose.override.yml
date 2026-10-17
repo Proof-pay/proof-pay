@@ -37,35 +37,40 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    # command: sleep infinity  # Infinite loop to keep container alive doing nothing
     command:
       - bash
       - -c
-      - bash scripts/prestart.sh && exec fastapi dev --host 0.0.0.0
-    develop:
-      watch:
-        - path: ./backend
-          action: sync
-          target: /app/backend
-          ignore:
-            - .venv
-        - path: ./backend/pyproject.toml
-          action: rebuild
-        - path: ./frontend
-          action: rebuild
-          ignore:
-            - ./frontend/node_modules
-            - ./frontend/dist
-            - ./frontend/blob-report
-            - ./frontend/test-results
+      - bash scripts/prestart.sh && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/backend/app
     # TODO: remove once coverage is done locally
     volumes:
+      - ./backend/app:/app/backend/app
+      # Keep the image's built frontend available to FastAPI; use Vite for live UI.
+      - backend-frontend-assets:/app/backend/app/frontend
       - ./backend/htmlcov:/app/backend/htmlcov
     environment:
       FASTAPI_ENV: "development"
       SMTP_HOST: "mailpit"
       SMTP_PORT: "1025"
       SMTP_TLS: "false"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: frontend-build
+    working_dir: /app/frontend
+    command: ["bun", "run", "dev", "--host", "0.0.0.0", "--port", "5173"]
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      # Bun installs workspace dependencies at /app/node_modules, outside the bind mount.
+      - frontend-vite-cache:/app/frontend/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
 
   mailpit:
     image: axllent/mailpit
@@ -99,3 +104,7 @@ services:
       - ./frontend/test-results:/app/frontend/test-results
     ports:
       - 9323:9323
+
+volumes:
+  backend-frontend-assets:
+  frontend-vite-cache:
