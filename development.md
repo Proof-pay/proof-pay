@@ -52,6 +52,36 @@ bun run build
 
 The build is written to `backend/app/frontend` and served by FastAPI at <http://localhost:8000>. Rebuild the frontend after making frontend changes.
 
+## Database Migrations
+
+Start PostgreSQL from the project root, then run Alembic from `backend`:
+
+```bash
+docker compose up -d db
+cd backend
+uv sync
+uv run alembic current
+uv run alembic upgrade head
+```
+
+`uv run bash scripts/prestart.sh` also applies migrations and creates the initial superuser. The Compose backend runs this script when it starts. After changing SQLModel table definitions, create a revision and review its operations before applying it:
+
+```bash
+uv run alembic revision --autogenerate -m "Describe the schema change"
+uv run alembic upgrade head
+```
+
+If Alembic reports `password authentication failed for user "postgres"`, check that `POSTGRES_PASSWORD` and the password in `DATABASE_URL` in the project root `.env` match. PostgreSQL uses `POSTGRES_PASSWORD` only when its data volume is first initialized; changing `.env` later does not change the existing database role password. To keep the data, set the role password to the value in `.env`:
+
+```bash
+# Run from the project root. Enter the POSTGRES_PASSWORD value from .env at the prompt.
+docker compose exec db psql -U postgres -d app
+\password postgres
+\q
+```
+
+Then run `uv run alembic upgrade head` from `backend` again. Avoid deleting the database volume to resolve an authentication error, since that also deletes local data.
+
 ## Full Stack with Docker Compose and Hot Reload
 
 From the repository root, build the development images and start the existing services:
