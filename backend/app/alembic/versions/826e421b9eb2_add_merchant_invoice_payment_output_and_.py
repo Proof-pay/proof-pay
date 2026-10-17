@@ -73,6 +73,9 @@ def upgrade():
     )
     op.create_index(op.f('ix_receipt_invoice_id'), 'receipt', ['invoice_id'], unique=True)
     op.create_index(op.f('ix_receipt_public_token'), 'receipt', ['public_token'], unique=True)
+    # The previous revision added this column as nullable. Existing users may
+    # still have no timestamp, so fill those rows before requiring a value.
+    op.execute(sa.text('UPDATE "user" SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL'))
     op.alter_column('user', 'created_at',
                existing_type=postgresql.TIMESTAMP(timezone=True),
                nullable=False)
