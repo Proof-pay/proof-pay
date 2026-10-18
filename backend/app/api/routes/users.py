@@ -13,7 +13,9 @@ from app.api.deps import (
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
 from app.models import (
+    Invoice,
     Item,
+    Merchant,
     Message,
     UpdatePassword,
     User,
@@ -138,6 +140,12 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         raise HTTPException(
             status_code=403, detail="Super users are not allowed to delete themselves"
         )
+    if session.exec(
+        select(Invoice.id).join(Merchant).where(Merchant.user_id == current_user.id)
+    ).first():
+        raise HTTPException(
+            status_code=409, detail="Account has payment requests and must be retained"
+        )
     session.delete(current_user)
     session.commit()
     return Message(message="User deleted successfully")
@@ -224,6 +232,12 @@ def delete_user(
     if user == current_user:
         raise HTTPException(
             status_code=403, detail="Super users are not allowed to delete themselves"
+        )
+    if session.exec(
+        select(Invoice.id).join(Merchant).where(Merchant.user_id == user_id)
+    ).first():
+        raise HTTPException(
+            status_code=409, detail="Account has payment requests and must be retained"
         )
     statement = delete(Item).where(col(Item.owner_id) == user_id)
     session.exec(statement)

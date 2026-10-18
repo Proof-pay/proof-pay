@@ -3,6 +3,7 @@ from typing import Literal, Self
 
 from pydantic import (
     EmailStr,
+    Field,
     HttpUrl,
     PostgresDsn,
     computed_field,
@@ -64,6 +65,13 @@ class Settings(BaseSettings):
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
+    BCH_NETWORK: Literal["mainnet", "testnet", "regtest"] = "mainnet"
+    BCH_RPC_URL: str | None = None
+    BCH_RPC_USER: str | None = None
+    BCH_RPC_PASSWORD: str | None = None
+    BCH_REQUIRED_CONFIRMATIONS: int = Field(default=1, ge=1, le=100)
+    BCH_RECONCILIATION_INTERVAL_SECONDS: int = Field(default=60, ge=15, le=86400)
+    PUBLIC_CHECKOUT_BASE_URL: str | None = None
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":

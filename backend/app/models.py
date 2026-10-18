@@ -1,10 +1,12 @@
+# SQLModel needs quoted forward relationships with this repository's mapper setup.
+# ruff: noqa: UP037, UP045
 import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
 from pydantic import EmailStr
-from sqlalchemy import BigInteger, DateTime, Text, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, Index, Text, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -13,12 +15,13 @@ def get_datetime_utc() -> datetime:
 
 
 def generate_public_token() -> str:
-    return secrets.token_urlsafe(16)
+    return secrets.token_urlsafe(32)
 
 
 # ==========================================
 # USER MODELS
 # ==========================================
+
 
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
@@ -85,6 +88,7 @@ class UsersPublic(SQLModel):
 # MERCHANT MODELS
 # ==========================================
 
+
 class MerchantBase(SQLModel):
     business_name: str = Field(max_length=255)
 
@@ -100,12 +104,22 @@ class MerchantUpdate(SQLModel):
 class Merchant(MerchantBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(
-        foreign_key="user.id", unique=True, index=True, nullable=False, ondelete="CASCADE"
+        foreign_key="user.id",
+        unique=True,
+        index=True,
+        nullable=False,
+        ondelete="CASCADE",
     )
     created_at: datetime = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
+    contact_email: str | None = Field(default=None, max_length=255)
+    contact_phone: str | None = Field(default=None, max_length=50)
+    receiving_address: str | None = Field(default=None, max_length=255)
+    network: str = Field(default="mainnet", max_length=20)
+    default_expiry_hours: int = Field(default=24)
+    required_confirmations: int = Field(default=1)
 
     user: User | None = Relationship(back_populates="merchant")
     invoices: list["Invoice"] = Relationship(
@@ -127,6 +141,7 @@ class MerchantsPublic(SQLModel):
 # ==========================================
 # INVOICE MODELS
 # ==========================================
+
 
 class InvoiceBase(SQLModel):
     order_reference: str = Field(max_length=255)
@@ -152,6 +167,12 @@ class InvoiceUpdate(SQLModel):
 
 
 class Invoice(InvoiceBase, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "merchant_id", "idempotency_key", name="uq_invoice_merchant_idempotency"
+        ),
+        Index("ix_invoice_merchant_status", "merchant_id", "status"),
+    )
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     merchant_id: uuid.UUID = Field(
         foreign_key="merchant.id", index=True, nullable=False, ondelete="CASCADE"
@@ -163,6 +184,16 @@ class Invoice(InvoiceBase, table=True):
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
+    title: str = Field(default="", max_length=255)
+    payment_status: str = Field(default="pending", max_length=30)
+    issued_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc, sa_type=DateTime(timezone=True)
+    )
+    fiat_reference_amount: str | None = Field(default=None, max_length=40)
+    fiat_currency: str | None = Field(default=None, max_length=3)
+    idempotency_key: str | None = Field(default=None, max_length=128)
+    idempotency_hash: str | None = Field(default=None, max_length=64)
 
     merchant: Merchant | None = Relationship(back_populates="invoices")
     payment_outputs: list["PaymentOutput"] = Relationship(
@@ -173,7 +204,6 @@ class Invoice(InvoiceBase, table=True):
         sa_relationship_kwargs={"uselist": False},
         cascade_delete=True,
     )
-
 
 
 class InvoicePublic(InvoiceBase):
@@ -191,6 +221,7 @@ class InvoicesPublic(SQLModel):
 # ==========================================
 # PAYMENT OUTPUT MODELS
 # ==========================================
+
 
 class PaymentOutputBase(SQLModel):
     network: str = Field(max_length=50)
@@ -222,13 +253,16 @@ class PaymentOutputUpdate(SQLModel):
 class PaymentOutput(PaymentOutputBase, table=True):
     __tablename__ = "payment_output"
     __table_args__ = (
-        UniqueConstraint("txid", "vout", name="uq_payment_output_txid_vout"),
+        UniqueConstraint(
+            "network", "txid", "vout", name="uq_payment_output_network_txid_vout"
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     invoice_id: uuid.UUID = Field(
         foreign_key="invoice.id", index=True, nullable=False, ondelete="CASCADE"
     )
+    is_late: bool = Field(default=False)
 
     invoice: Invoice | None = Relationship(back_populates="payment_outputs")
 
@@ -246,6 +280,7 @@ class PaymentOutputsPublic(SQLModel):
 # ==========================================
 # RECEIPT MODELS
 # ==========================================
+
 
 class ReceiptBase(SQLModel):
     issued_at: datetime = Field(
@@ -266,11 +301,27 @@ class ReceiptUpdate(SQLModel):
 class Receipt(ReceiptBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     invoice_id: uuid.UUID = Field(
-        foreign_key="invoice.id", unique=True, index=True, nullable=False, ondelete="CASCADE"
+        foreign_key="invoice.id",
+        unique=True,
+        index=True,
+        nullable=False,
+        ondelete="CASCADE",
     )
     public_token: str = Field(
         default_factory=generate_public_token, unique=True, index=True, max_length=255
     )
+    reference: str = Field(
+        default_factory=lambda: f"PP-{secrets.token_hex(8).upper()}",
+        unique=True,
+        index=True,
+        max_length=32,
+    )
+    invoice_reference: str = Field(default="", max_length=255)
+    merchant_name: str = Field(default="", max_length=255)
+    amount_sats: int = Field(default=0, sa_type=BigInteger)
+    network: str = Field(default="mainnet", max_length=20)
+    required_confirmations: int = Field(default=1)
+    output_refs: str = Field(default="[]", sa_type=Text)
 
     invoice: Invoice | None = Relationship(back_populates="receipt")
 
@@ -289,6 +340,7 @@ class ReceiptsPublic(SQLModel):
 # ==========================================
 # ITEM MODELS & AUTH SCHEMAS
 # ==========================================
+
 
 class ItemBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)

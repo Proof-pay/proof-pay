@@ -63,6 +63,13 @@ services:
       EMAILS_FROM_EMAIL: ${EMAILS_FROM_EMAIL}
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Variable not set}@db:5432/app
       SENTRY_DSN: ${SENTRY_DSN:-}
+      BCH_NETWORK: ${BCH_NETWORK:-mainnet}
+      BCH_RPC_URL: ${BCH_RPC_URL:-}
+      BCH_RPC_USER: ${BCH_RPC_USER:-}
+      BCH_RPC_PASSWORD: ${BCH_RPC_PASSWORD:-}
+      BCH_REQUIRED_CONFIRMATIONS: ${BCH_REQUIRED_CONFIRMATIONS:-1}
+      BCH_RECONCILIATION_INTERVAL_SECONDS: ${BCH_RECONCILIATION_INTERVAL_SECONDS:-60}
+      PUBLIC_CHECKOUT_BASE_URL: ${PUBLIC_CHECKOUT_BASE_URL:-}
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
