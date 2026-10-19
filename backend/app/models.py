@@ -60,7 +60,11 @@ class UpdatePassword(SQLModel):
 
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    hashed_password: str
+    hashed_password: str | None = Field(default=None)
+    google_id: str | None = Field(
+        default=None, unique=True, index=True, max_length=255
+    )
+    avatar_url: str | None = Field(default=None, max_length=512)
     created_at: datetime = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
@@ -73,10 +77,21 @@ class User(UserBase, table=True):
         cascade_delete=True,
     )
 
+    @property
+    def has_password(self) -> bool:
+        return bool(self.hashed_password)
+
+    @property
+    def google_linked(self) -> bool:
+        return bool(self.google_id)
+
 
 class UserPublic(UserBase):
     id: uuid.UUID
     created_at: datetime | None = None
+    avatar_url: str | None = None
+    has_password: bool = True
+    google_linked: bool = False
 
 
 class UsersPublic(SQLModel):

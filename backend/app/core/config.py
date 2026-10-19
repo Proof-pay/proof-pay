@@ -73,6 +73,22 @@ class Settings(BaseSettings):
     BCH_RECONCILIATION_INTERVAL_SECONDS: int = Field(default=60, ge=15, le=86400)
     PUBLIC_CHECKOUT_BASE_URL: str | None = None
 
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    GOOGLE_REDIRECT_URI: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def google_oauth_enabled(self) -> bool:
+        return bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def effective_google_redirect_uri(self) -> str:
+        if self.GOOGLE_REDIRECT_URI:
+            return self.GOOGLE_REDIRECT_URI
+        return f"http://localhost:8000{self.API_V1_STR}/login/google/callback"
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (

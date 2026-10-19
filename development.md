@@ -71,6 +71,14 @@ uv run alembic revision --autogenerate -m "Describe the schema change"
 uv run alembic upgrade head
 ```
 
+To roll back every migration, run this from the project root:
+
+```bash
+bun run migrate:reset
+```
+
+This downgrades Alembic to `base`, dropping the application tables and deleting their data. Check that `DATABASE_URL` points to the intended database before running it. To recreate the tables afterward, run `uv run alembic upgrade head` from `backend`; run `uv run bash scripts/prestart.sh` instead if you also want to recreate the initial superuser.
+
 If Alembic reports `password authentication failed for user "postgres"`, check that `POSTGRES_PASSWORD` and the password in `DATABASE_URL` in the project root `.env` match. PostgreSQL uses `POSTGRES_PASSWORD` only when its data volume is first initialized; changing `.env` later does not change the existing database role password. To keep the data, set the role password to the value in `.env`:
 
 ```bash

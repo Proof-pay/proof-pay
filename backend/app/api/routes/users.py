@@ -109,6 +109,11 @@ def update_password_me(
     """
     Update own password.
     """
+    if not current_user.hashed_password:
+        raise HTTPException(
+            status_code=400,
+            detail="User does not have a password set",
+        )
     verified, _ = verify_password(body.current_password, current_user.hashed_password)
     if not verified:
         raise HTTPException(status_code=400, detail="Incorrect password")

@@ -89,6 +89,7 @@ def test_update_user(db: Session) -> None:
     user_2 = db.get(User, user.id)
     assert user_2
     assert user.email == user_2.email
+    assert user_2.hashed_password is not None
     verified, _ = verify_password(new_password, user_2.hashed_password)
     assert verified
 
@@ -110,6 +111,7 @@ def test_authenticate_user_with_bcrypt_upgrades_to_argon2(db: Session) -> None:
     db.refresh(user)
 
     # Verify the hash is bcrypt before authentication
+    assert user.hashed_password is not None
     assert user.hashed_password.startswith("$2")
 
     # Authenticate - this should upgrade the hash to argon2
@@ -120,6 +122,7 @@ def test_authenticate_user_with_bcrypt_upgrades_to_argon2(db: Session) -> None:
     db.refresh(authenticated_user)
 
     # Verify the hash was upgraded to argon2
+    assert authenticated_user.hashed_password is not None
     assert authenticated_user.hashed_password.startswith("$argon2")
 
     verified, updated_hash = verify_password(
