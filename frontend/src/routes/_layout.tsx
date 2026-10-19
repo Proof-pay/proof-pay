@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 
+import { UsersService } from "@/client"
 import { Footer } from "@/components/Common/Footer"
 import AppSidebar from "@/components/Sidebar/AppSidebar"
 import {
@@ -8,6 +9,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { isLoggedIn } from "@/hooks/useAuth"
+import { isSessionError } from "@/utils/session"
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
@@ -16,6 +18,15 @@ export const Route = createFileRoute("/_layout")({
       throw redirect({
         to: "/login",
       })
+    }
+
+    try {
+      await UsersService.readUserMe()
+    } catch (error) {
+      if (!isSessionError(error, true)) throw error
+
+      localStorage.removeItem("access_token")
+      throw redirect({ to: "/login" })
     }
   },
 })

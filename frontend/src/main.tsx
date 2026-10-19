@@ -5,7 +5,6 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query"
 import { createRouter, RouterProvider } from "@tanstack/react-router"
-import { AxiosError } from "axios"
 import { StrictMode } from "react"
 import ReactDOM from "react-dom/client"
 import { client } from "./client/client.gen"
@@ -13,27 +12,27 @@ import { ThemeProvider } from "./components/theme-provider"
 import { Toaster } from "./components/ui/sonner"
 import "./index.css"
 import { routeTree } from "./routeTree.gen"
+import { isSessionError } from "./utils/session"
 
 client.setConfig({
   baseURL: import.meta.env.VITE_API_URL ?? "",
   auth: () => localStorage.getItem("access_token") || "",
 })
 
-const handleApiError = (error: Error) => {
-  if (
-    error instanceof AxiosError &&
-    [401, 403].includes(error.response?.status ?? 0)
-  ) {
+const handleApiError = (error: Error, currentUserRequest = false) => {
+  if (isSessionError(error, currentUserRequest)) {
     localStorage.removeItem("access_token")
+    queryClient.removeQueries({ queryKey: ["currentUser"] })
     window.location.href = "/login"
   }
 }
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
-    onError: handleApiError,
+    onError: (error, query) =>
+      handleApiError(error, query.queryKey[0] === "currentUser"),
   }),
   mutationCache: new MutationCache({
-    onError: handleApiError,
+    onError: (error) => handleApiError(error),
   }),
 })
 
