@@ -33,7 +33,6 @@ export function AppSidebar() {
         <Logo variant="responsive" />
       </SidebarHeader>
       <SidebarContent>
-        
         <Main items={items} />
       </SidebarContent>
       <SidebarFooter>

@@ -4,11 +4,13 @@ import {
   Link as RouterLink,
   redirect,
 } from "@tanstack/react-router"
+import { useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
 import type { Body_login_login_access_token as AccessToken } from "@/client"
 import { AuthLayout } from "@/components/Common/AuthLayout"
+import { GoogleLoginButton } from "@/components/Common/GoogleLoginButton"
 import {
   Form,
   FormControl,
@@ -21,6 +23,17 @@ import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
+import useCustomToast from "@/hooks/useCustomToast"
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  google_auth_cancelled: "Google sign-in was cancelled.",
+  invalid_oauth_state: "Invalid or expired sign-in session. Please try again.",
+  google_token_exchange_failed: "Failed to authenticate with Google.",
+  google_userinfo_failed: "Failed to fetch profile from Google.",
+  google_network_error: "Network error while contacting Google.",
+  unverified_google_email: "Your Google account email must be verified.",
+  inactive_user: "Your account is currently inactive.",
+}
 
 const formSchema = z.object({
   username: z.email({ message: "Invalid email address" }),
@@ -52,6 +65,20 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { loginMutation } = useAuth()
+  const { showErrorToast } = useCustomToast()
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const error = params.get("error")
+    if (error) {
+      showErrorToast(
+        OAUTH_ERROR_MESSAGES[error] ??
+          "Google sign-in failed. Please try again.",
+      )
+      window.history.replaceState(null, "", window.location.pathname)
+    }
+  }, [showErrorToast])
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     mode: "onBlur",
@@ -75,7 +102,9 @@ function Login() {
           className="flex flex-col gap-6"
         >
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-bold">Login to your account - proofpay</h1>
+            <h1 className="text-2xl font-bold">
+              Login to your account - proofpay
+            </h1>
           </div>
 
           <div className="grid gap-4">
@@ -127,6 +156,14 @@ function Login() {
             <LoadingButton type="submit" loading={loginMutation.isPending}>
               Log In
             </LoadingButton>
+
+            <div className="relative my-1 text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
+              <span className="relative z-10 bg-background px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+
+            <GoogleLoginButton />
           </div>
 
           <div className="text-center text-sm">

@@ -18,6 +18,7 @@ import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as RPublicReceiptIdRouteImport } from './routes/r/$publicReceiptId'
 import { Route as LayoutDashboardIndexRouteImport } from './routes/_layout/dashboard/index'
 import { Route as PPublicIdIndexRouteImport } from './routes/p/$publicId.index'
@@ -73,6 +74,11 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => LayoutRoute,
+} as any)
+const OauthCallbackRoute = OauthCallbackRouteImport.update({
+  id: '/oauth/callback',
+  path: '/oauth/callback',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const RPublicReceiptIdRoute = RPublicReceiptIdRouteImport.update({
   id: '/r/$publicReceiptId',
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/oauth/callback': typeof OauthCallbackRoute
   '/r/$publicReceiptId': typeof RPublicReceiptIdRoute
   '/p/$publicId/status': typeof PPublicIdStatusRoute
   '/dashboard/': typeof LayoutDashboardIndexRoute
@@ -166,6 +173,7 @@ export interface FileRoutesByTo {
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/oauth/callback': typeof OauthCallbackRoute
   '/r/$publicReceiptId': typeof RPublicReceiptIdRoute
   '/': typeof LayoutIndexRoute
   '/p/$publicId/status': typeof PPublicIdStatusRoute
@@ -189,6 +197,7 @@ export interface FileRoutesById {
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/oauth/callback': typeof OauthCallbackRoute
   '/r/$publicReceiptId': typeof RPublicReceiptIdRoute
   '/_layout/': typeof LayoutIndexRoute
   '/p/$publicId/status': typeof PPublicIdStatusRoute
@@ -213,6 +222,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/items'
     | '/settings'
+    | '/oauth/callback'
     | '/r/$publicReceiptId'
     | '/p/$publicId/status'
     | '/dashboard/'
@@ -233,6 +243,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/items'
     | '/settings'
+    | '/oauth/callback'
     | '/r/$publicReceiptId'
     | '/'
     | '/p/$publicId/status'
@@ -255,6 +266,7 @@ export interface FileRouteTypes {
     | '/_layout/admin'
     | '/_layout/items'
     | '/_layout/settings'
+    | '/oauth/callback'
     | '/r/$publicReceiptId'
     | '/_layout/'
     | '/p/$publicId/status'
@@ -275,6 +287,7 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  OauthCallbackRoute: typeof OauthCallbackRoute
   RPublicReceiptIdRoute: typeof RPublicReceiptIdRoute
   PPublicIdStatusRoute: typeof PPublicIdStatusRoute
   PPublicIdIndexRoute: typeof PPublicIdIndexRoute
@@ -344,6 +357,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings'
       preLoaderRoute: typeof LayoutSettingsRouteImport
       parentRoute: typeof LayoutRoute
+    }
+    '/oauth/callback': {
+      id: '/oauth/callback'
+      path: '/oauth/callback'
+      fullPath: '/oauth/callback'
+      preLoaderRoute: typeof OauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/r/$publicReceiptId': {
       id: '/r/$publicReceiptId'
@@ -465,6 +485,7 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  OauthCallbackRoute: OauthCallbackRoute,
   RPublicReceiptIdRoute: RPublicReceiptIdRoute,
   PPublicIdStatusRoute: PPublicIdStatusRoute,
   PPublicIdIndexRoute: PPublicIdIndexRoute,

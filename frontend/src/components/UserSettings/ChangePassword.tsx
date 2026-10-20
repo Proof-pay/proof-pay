@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/form"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { PasswordInput } from "@/components/ui/password-input"
+import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
@@ -39,6 +40,7 @@ const formSchema = z
 type FormData = z.infer<typeof formSchema>
 
 const ChangePassword = () => {
+  const { user: currentUser } = useAuth()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -63,6 +65,19 @@ const ChangePassword = () => {
 
   const onSubmit = async (data: FormData) => {
     mutation.mutate(data)
+  }
+
+  if (currentUser && currentUser.has_password === false) {
+    return (
+      <div className="max-w-md">
+        <h3 className="text-lg font-semibold py-4">Password</h3>
+        <p className="text-sm text-muted-foreground">
+          Your account is connected with Google Sign-In and does not have a
+          local password set. You can set a password at any time using the
+          password recovery flow on the login page.
+        </p>
+      </div>
+    )
   }
 
   return (
