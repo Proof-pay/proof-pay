@@ -240,6 +240,18 @@ export type UserPublic = {
      * Created At
      */
     created_at?: string | null;
+    /**
+     * Avatar Url
+     */
+    avatar_url?: string | null;
+    /**
+     * Has Password
+     */
+    has_password?: boolean;
+    /**
+     * Google Linked
+     */
+    google_linked?: boolean;
 };
 
 /**
@@ -467,6 +479,56 @@ export type loginRecoverPasswordHtmlContentResponses = {
 };
 
 export type loginRecoverPasswordHtmlContentResponse = loginRecoverPasswordHtmlContentResponses[keyof loginRecoverPasswordHtmlContentResponses];
+
+export type loginLoginGoogleData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/login/google';
+};
+
+export type loginLoginGoogleResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type loginLoginGoogleCallbackData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Code
+         */
+        code?: string | null;
+        /**
+         * State
+         */
+        state?: string | null;
+        /**
+         * Error
+         */
+        error?: string | null;
+    };
+    url: '/api/v1/login/google/callback';
+};
+
+export type loginLoginGoogleCallbackErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type loginLoginGoogleCallbackError = loginLoginGoogleCallbackErrors[keyof loginLoginGoogleCallbackErrors];
+
+export type loginLoginGoogleCallbackResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type usersReadUsersData = {
     body?: never;
