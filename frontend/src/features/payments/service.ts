@@ -1,102 +1,313 @@
+import { isAxiosError } from "axios"
 import cashaddr from "cashaddrjs"
+import { client } from "@/client/client.gen"
 
-export type PaymentStatus = "pending" | "detected" | "confirmed" | "expired"
+export type PaymentStatus =
+  | "draft"
+  | "pending"
+  | "detected"
+  | "confirmed"
+  | "expired"
+  | "cancelled"
+  | "orphaned"
+export type Payment = {
+  id: string
+  invoice_id: string
+  txid: string
+  vout: number
+  amount_sats: number
+  confirmations: number
+  status: "detected" | "confirmed" | "orphaned"
+  first_seen_at: string
+}
 export type PaymentLink = {
   id: string
   publicId: string
+  orderReference: string
   title: string
   description: string
   amount: string
   address: string
-  merchant: string
   createdAt: string
-  expiresAt: string | null
+  expiresAt: string
   status: PaymentStatus
-  txid: string | null
-  confirmations: number
+  paymentStatus: string
+  checkoutPath: string
+  paymentUri: string | null
   receiptId: string | null
-  demo: true
+  payments: Payment[]
 }
-
-const key = "proofpay_demo_links_v1"
-const fixture: PaymentLink = {
-  id: "sample-request",
-  publicId: "sample-request",
-  title: "Website design deposit",
-  description: "Initial design milestone",
-  amount: "0.05",
-  address: "",
-  merchant: "Aung Studio",
-  createdAt: "2026-10-15T09:00:00.000Z",
-  expiresAt: null,
-  status: "pending",
-  txid: null,
-  confirmations: 0,
-  receiptId: "sample-receipt",
-  demo: true,
+export type InvoiceResponse = {
+  id: string
+  public_token: string
+  order_reference: string
+  title: string
+  description: string | null
+  amount_bch: string
+  receiving_address: string
+  created_at: string
+  expires_at: string
+  status: PaymentStatus
+  payment_status: string
+  checkout_url: string
+  payment_uri: string | null
+  receipt_token: string | null
+  payments: Payment[]
 }
+export type PublicCheckout = {
+  merchant_name: string
+  title: string
+  description: string | null
+  order_reference: string
+  amount_bch: string
+  receiving_address: string
+  expires_at: string
+  status: PaymentStatus
+  payment_status: string
+  payment_uri: string | null
+  qr_payload: string | null
+  receipt_url: string | null
+  received_amount_sats: number
+  confirmed_amount_sats: number
+}
+export type Receipt = {
+  id: string
+  public_token: string
+  reference: string
+  invoice_reference: string
+  merchant_name: string
+  amount_sats: number
+  output_refs: string[]
+  issued_at: string
+  verified_at: string
+  verification_url: string
+  current_status: string
+  statement: string
+}
+export type PublicReceipt = Omit<Receipt, "id" | "public_token">
+export type Summary = {
+  confirmed_received_sats: number
+  outstanding_requested_sats: number
+  request_counts: Record<string, number>
+  recent_activity: InvoiceResponse[]
+}
+export type Page<T> = { data: T[]; count: number }
 
-export function listLinks(): PaymentLink[] {
-  try {
-    const stored = JSON.parse(
-      localStorage.getItem(key) || "[]",
-    ) as PaymentLink[]
-    return [...stored, fixture]
-  } catch {
-    return [fixture]
+const auth = [{ scheme: "bearer" as const, type: "http" as const }]
+const base = "/api/v1"
+
+export function errorMessage(error: unknown): string {
+  if (isAxiosError(error)) {
+    const detail = error.response?.data?.detail
+    if (typeof detail === "string") return detail
+    if (Array.isArray(detail))
+      return detail.map((entry) => entry.msg).join("; ")
+  }
+  return error instanceof Error
+    ? error.message
+    : "The request failed. Please try again."
+}
+export function asLink(invoice: InvoiceResponse): PaymentLink {
+  return {
+    id: invoice.id,
+    publicId: invoice.public_token,
+    orderReference: invoice.order_reference,
+    title: invoice.title,
+    description: invoice.description ?? "",
+    amount: invoice.amount_bch,
+    address: invoice.receiving_address,
+    createdAt: invoice.created_at,
+    expiresAt: invoice.expires_at,
+    status: invoice.status,
+    paymentStatus: invoice.payment_status,
+    checkoutPath: invoice.checkout_url,
+    paymentUri: invoice.payment_uri,
+    receiptId: invoice.receipt_token,
+    payments: invoice.payments,
   }
 }
-
-export function getLink(id: string) {
-  return listLinks().find((link) => link.id === id || link.publicId === id)
-}
-
-export function createLink(
-  input: Pick<
-    PaymentLink,
-    "title" | "description" | "amount" | "address" | "merchant" | "expiresAt"
-  >,
+export async function listLinks(
+  params: {
+    search?: string
+    status?: string
+    limit?: number
+    offset?: number
+  } = {},
 ) {
-  const id = crypto.randomUUID()
-  const link: PaymentLink = {
-    ...input,
-    id,
-    publicId: id,
-    createdAt: new Date().toISOString(),
-    status: "pending",
-    txid: null,
-    confirmations: 0,
-    receiptId: null,
-    demo: true,
+  const { data } = await client.get<
+    { 200: Page<InvoiceResponse> },
+    unknown,
+    true
+  >({
+    url: `${base}/payment-requests`,
+    security: auth,
+    query: params,
+    responseType: "json",
+  })
+  return { data: data.data.map(asLink), count: data.count }
+}
+export async function getLink(id: string) {
+  const { data } = await client.get<{ 200: InvoiceResponse }, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}`,
+    security: auth,
+    responseType: "json",
+  })
+  return asLink(data)
+}
+export async function issueLink(id: string) {
+  const { data } = await client.post<{ 200: InvoiceResponse }, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}/issue`,
+    security: auth,
+    responseType: "json",
+  })
+  return asLink(data)
+}
+export async function createLink(input: {
+  title: string
+  description: string
+  amount: string
+  address: string
+  expiresAt: string | null
+  orderReference: string
+}) {
+  const { data: draft } = await client.post<
+    { 201: InvoiceResponse },
+    unknown,
+    true
+  >({
+    url: `${base}/payment-requests`,
+    security: auth,
+    responseType: "json",
+    body: {
+      order_reference: input.orderReference,
+      title: input.title,
+      description: input.description || null,
+      amount_bch: input.amount,
+      receiving_address: input.address,
+      expires_at: input.expiresAt,
+    },
+  })
+  try {
+    return await issueLink(draft.id)
+  } catch (error) {
+    throw new Error(
+      `Request saved as a draft, but could not be issued: ${errorMessage(error)}. Open payment links to retry.`,
+    )
   }
-  const stored = listLinks().filter((item) => item.id !== fixture.id)
-  localStorage.setItem(key, JSON.stringify([link, ...stored]))
-  return link
+}
+export async function updateLink(
+  id: string,
+  input: {
+    title: string
+    description: string
+    amount: string
+    address: string
+    expiresAt: string | null
+  },
+) {
+  const { data } = await client.patch<{ 200: InvoiceResponse }, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}`,
+    security: auth,
+    responseType: "json",
+    body: {
+      title: input.title,
+      description: input.description || null,
+      amount_bch: input.amount,
+      receiving_address: input.address,
+      ...(input.expiresAt ? { expires_at: input.expiresAt } : {}),
+    },
+  })
+  return asLink(data)
+}
+export async function cancelLink(id: string) {
+  const { data } = await client.post<{ 200: InvoiceResponse }, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}/cancel`,
+    security: auth,
+    responseType: "json",
+  })
+  return asLink(data)
+}
+export async function deleteLink(id: string) {
+  await client.delete<unknown, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}`,
+    security: auth,
+  })
+}
+export async function getPublicLink(token: string, status = false) {
+  const { data } = await client.get<{ 200: PublicCheckout }, unknown, true>({
+    url: `${base}/public/payment-requests/${encodeURIComponent(token)}${status ? "/status" : ""}`,
+    responseType: "json",
+  })
+  return data
+}
+export async function listPayments(
+  params: {
+    search?: string
+    status?: string
+    limit?: number
+    offset?: number
+  } = {},
+) {
+  const { data } = await client.get<{ 200: Page<Payment> }, unknown, true>({
+    url: `${base}/payments`,
+    security: auth,
+    query: params,
+    responseType: "json",
+  })
+  return data
+}
+export async function getPayment(id: string) {
+  const { data } = await client.get<{ 200: Payment }, unknown, true>({
+    url: `${base}/payments/${encodeURIComponent(id)}`,
+    security: auth,
+    responseType: "json",
+  })
+  return data
+}
+export async function listReceipts(
+  params: { search?: string; limit?: number; offset?: number } = {},
+) {
+  const { data } = await client.get<{ 200: Page<Receipt> }, unknown, true>({
+    url: `${base}/receipts`,
+    security: auth,
+    query: params,
+    responseType: "json",
+  })
+  return data
+}
+export async function getPublicReceipt(token: string) {
+  const { data } = await client.get<{ 200: PublicReceipt }, unknown, true>({
+    url: `${base}/public/receipts/${encodeURIComponent(token)}`,
+    responseType: "json",
+  })
+  return data
+}
+export async function getSummary() {
+  const { data } = await client.get<{ 200: Summary }, unknown, true>({
+    url: `${base}/dashboard/summary`,
+    security: auth,
+    responseType: "json",
+  })
+  return data
 }
 
 export function validAddress(value: string) {
   try {
-    const decoded = cashaddr.decode(
-      value.startsWith("bitcoincash:") ? value : `bitcoincash:${value}`,
+    return (
+      cashaddr.decode(
+        value.startsWith("bitcoincash:") ? value : `bitcoincash:${value}`,
+      ).prefix === "bitcoincash"
     )
-    return decoded.prefix === "bitcoincash"
   } catch {
     return false
   }
 }
-
 export function checkoutUrl(link: PaymentLink) {
-  return `${window.location.origin}/p/${encodeURIComponent(link.publicId)}`
+  const path = new URL(link.checkoutPath, window.location.origin).pathname
+  return `${window.location.origin}${path}`
 }
 export function receiptUrl(id: string) {
   return `${window.location.origin}/r/${encodeURIComponent(id)}`
-}
-export function paymentUri(link: PaymentLink) {
-  if (!link.address || !validAddress(link.address)) return null
-  const address = link.address.startsWith("bitcoincash:")
-    ? link.address
-    : `bitcoincash:${link.address}`
-  return `${address}?amount=${link.amount}`
 }
 export function displayDate(value: string | null) {
   return value
@@ -108,19 +319,16 @@ export function displayDate(value: string | null) {
 }
 export function isExpired(link: PaymentLink) {
   return (
-    link.expiresAt !== null && new Date(link.expiresAt).getTime() < Date.now()
+    link.status === "expired" ||
+    (link.status === "pending" &&
+      new Date(link.expiresAt).getTime() < Date.now())
   )
 }
-
-export function sumAmounts(amounts: string[]) {
-  const satoshis = amounts.reduce((total, amount) => {
-    const [whole, fraction = ""] = amount.split(".")
-    return total + BigInt(whole) * 100000000n + BigInt(fraction.padEnd(8, "0"))
-  }, 0n)
-  const whole = satoshis / 100000000n
-  const fraction = (satoshis % 100000000n)
+export function satsToBch(sats: number) {
+  const whole = Math.floor(sats / 100000000)
+  const fraction = (sats % 100000000)
     .toString()
     .padStart(8, "0")
     .replace(/0+$/, "")
-  return fraction ? `${whole}.${fraction}` : whole.toString()
+  return fraction ? `${whole}.${fraction}` : String(whole)
 }

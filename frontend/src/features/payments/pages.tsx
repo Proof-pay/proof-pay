@@ -1,34 +1,43 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate } from "@tanstack/react-router"
 import {
-  Activity,
   ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
   CircleCheck,
   Clock3,
   ExternalLink,
   Link2,
   Plus,
-  Receipt,
-  ScanLine,
+  Receipt as ReceiptIcon,
   Wallet,
 } from "lucide-react"
-import { useState } from "react"
+import { type FormEvent, type ReactNode, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import useAuth from "@/hooks/useAuth"
 import {
+  asLink,
+  cancelLink,
   checkoutUrl,
   createLink,
+  deleteLink,
   displayDate,
+  errorMessage,
   getLink,
+  getPayment,
+  getPublicLink,
+  getPublicReceipt,
+  getSummary,
   isExpired,
+  issueLink,
   listLinks,
+  listPayments,
+  listReceipts,
+  type PaymentLink,
   type PaymentStatus,
-  paymentUri,
   receiptUrl,
-  sumAmounts,
+  satsToBch,
+  updateLink,
   validAddress,
 } from "./service"
 import {
@@ -36,7 +45,6 @@ import {
   DemoNotice,
   DetailRow,
   EmptyState,
-  ExplorerLink,
   LinkStatus,
   PageHeader,
   PaymentTable,
@@ -50,13 +58,94 @@ import {
 
 const card = "dashboard-card p-5 sm:p-6"
 const primaryLink =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+  "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-800"
+const linkQuery = (id: string) => ({
+  queryKey: ["payment-link", id],
+  queryFn: () => getLink(id),
+})
+
+function QueryState({ loading, error }: { loading: boolean; error: unknown }) {
+  if (loading)
+    return (
+      <p role="status" className="p-6 text-sm text-slate-500">
+        Loading payment information…
+      </p>
+    )
+  if (error)
+    return (
+      <div
+        role="alert"
+        className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+      >
+        {errorMessage(error)}
+      </div>
+    )
+  return null
+}
+function Field({
+  id,
+  label,
+  children,
+  required,
+}: {
+  id: string
+  label: string
+  children: ReactNode
+  required?: boolean
+}) {
+  return (
+    <div className="space-y-2">
+      <label htmlFor={id} className="block text-sm font-medium">
+        {label}
+        {required && " *"}
+      </label>
+      {children}
+    </div>
+  )
+}
+function PageControls({
+  page,
+  count,
+  size,
+  setPage,
+}: {
+  page: number
+  count: number
+  size: number
+  setPage: (page: number) => void
+}) {
+  return (
+    <div className="flex items-center justify-end gap-3 text-sm">
+      <Button
+        variant="outline"
+        disabled={page === 1}
+        onClick={() => setPage(page - 1)}
+      >
+        Previous
+      </Button>
+      <span>
+        Page {page} of {Math.max(1, Math.ceil(count / size))}
+      </span>
+      <Button
+        variant="outline"
+        disabled={page * size >= count}
+        onClick={() => setPage(page + 1)}
+      >
+        Next
+      </Button>
+    </div>
+  )
+}
 
 export function Overview() {
-  const links = listLinks()
-  const active = links.filter(
-    (link) => !isExpired(link) && link.status === "pending",
-  )
+  const summary = useQuery({
+    queryKey: ["payment-summary"],
+    queryFn: getSummary,
+  })
+  if (!summary.data)
+    return <QueryState loading={summary.isPending} error={summary.error} />
+  const data = summary.data
+  const links = data.recent_activity.map(asLink)
   return (
     <div className="space-y-7">
       <PageHeader
@@ -70,91 +159,52 @@ export function Overview() {
           </Link>
         }
       />
-      <DemoNotice />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total received"
-          value="0 BCH"
-          hint="No verified payments"
+          value={`${satsToBch(data.confirmed_received_sats)} BCH`}
+          hint="Confirmed payments"
           icon={Wallet}
         />
         <StatCard
           label="Pending amount"
-          value={`${sumAmounts(active.map((item) => item.amount))} BCH`}
-          hint={`${active.length} open requests`}
-          icon={Activity}
+          value={`${satsToBch(data.outstanding_requested_sats)} BCH`}
+          hint="Outstanding requests"
+          icon={Clock3}
           tone="amber"
         />
         <StatCard
           label="Active links"
-          value={String(active.length)}
+          value={String(data.request_counts.pending ?? 0)}
           hint="Ready to share"
           icon={Link2}
           tone="blue"
         />
         <StatCard
           label="Confirmed"
-          value="0"
-          hint="Verification not connected"
+          value={String(data.request_counts.confirmed ?? 0)}
+          hint="Completed requests"
           icon={CircleCheck}
           tone="violet"
         />
       </div>
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="min-w-0 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold tracking-tight">
-                Recent payment requests
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Your latest activity in one place
-              </p>
-            </div>
-            <Link
-              to="/dashboard/payment-links"
-              className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
-            >
-              View all <ArrowUpRight className="size-4" />
-            </Link>
-          </div>
-          <PaymentTable links={links.slice(0, 5)} />
-        </section>
-        <aside className="space-y-4">
-          <div className="rounded-2xl bg-[#112d31] p-6 text-white shadow-[0_12px_32px_rgba(16,49,48,.12)]">
-            <span className="grid size-11 place-items-center rounded-xl bg-white/10">
-              <ScanLine className="size-5 text-emerald-300" />
-            </span>
-            <h2 className="mt-6 text-lg font-bold tracking-tight">
-              Accept BCH, simply.
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Create a payment request, then share its checkout page or QR code.
-            </p>
-            <Link
-              to="/dashboard/payment-links/new"
-              className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#21bf85] px-4 text-sm font-semibold text-[#082e25] transition-colors hover:bg-[#55d9a7]"
-            >
-              Create a payment link <ArrowRight className="size-4" />
-            </Link>
-          </div>
-          <div className={`${card} space-y-3`}>
-            <h2 className="font-semibold">Quick access</h2>
-            <Link
-              to="/dashboard/transactions"
-              className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-slate-50"
-            >
-              Transactions <ArrowRight className="size-4 text-slate-400" />
-            </Link>
-            <Link
-              to="/dashboard/receipts"
-              className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-slate-50"
-            >
-              Receipts <ArrowRight className="size-4 text-slate-400" />
-            </Link>
-          </div>
-        </aside>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold">Recent payment requests</h2>
+        <Link
+          to="/dashboard/payment-links"
+          className="text-sm font-semibold text-emerald-700"
+        >
+          View all →
+        </Link>
       </div>
+      {links.length ? (
+        <PaymentTable links={links} />
+      ) : (
+        <EmptyState
+          title="No payment links yet"
+          description="Create a payment link to start accepting BCH."
+        />
+      )}
     </div>
   )
 }
@@ -163,15 +213,17 @@ export function LinksPage() {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState("all")
   const [page, setPage] = useState(1)
-  const filtered = listLinks().filter(
-    (link) =>
-      `${link.title} ${link.merchant}`
-        .toLowerCase()
-        .includes(search.toLowerCase()) &&
-      (filter === "all" ||
-        (isExpired(link) ? "expired" : link.status) === filter),
-  )
-  const pages = Math.max(1, Math.ceil(filtered.length / 8))
+  const size = 8
+  const query = useQuery({
+    queryKey: ["payment-links", search, filter, page],
+    queryFn: () =>
+      listLinks({
+        search: search || undefined,
+        status: filter === "all" ? undefined : filter,
+        limit: size,
+        offset: (page - 1) * size,
+      }),
+  })
   return (
     <div className="space-y-6">
       <PageHeader
@@ -185,7 +237,6 @@ export function LinksPage() {
           </Link>
         }
       />
-      <DemoNotice />
       <div className="dashboard-card flex flex-wrap gap-3 p-4">
         <SearchField
           value={search}
@@ -204,74 +255,188 @@ export function LinksPage() {
             setPage(1)
           }}
         >
-          <option value="all">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="detected">Detected</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="expired">Expired</option>
+          {["all", "draft", "pending", "confirmed", "expired", "cancelled"].map(
+            (status) => (
+              <option key={status} value={status}>
+                {status === "all"
+                  ? "All statuses"
+                  : status[0].toUpperCase() + status.slice(1)}
+              </option>
+            ),
+          )}
         </select>
       </div>
-      {filtered.length ? (
-        <PaymentTable links={filtered.slice((page - 1) * 8, page * 8)} />
+      {query.data ? (
+        query.data.data.length ? (
+          <PaymentTable links={query.data.data} />
+        ) : (
+          <EmptyState
+            title="No matching links"
+            description="Try another search or create a payment link."
+          />
+        )
       ) : (
-        <EmptyState
-          title="No matching links"
-          description="Try another search or create a payment link."
+        <QueryState loading={query.isPending} error={query.error} />
+      )}
+      {!!query.data?.count && (
+        <PageControls
+          page={page}
+          count={query.data.count}
+          size={size}
+          setPage={setPage}
         />
       )}
-      <div className="flex items-center justify-end gap-3 text-sm">
-        <Button
-          variant="outline"
-          disabled={page === 1}
-          onClick={() => setPage(page - 1)}
-        >
-          Previous
-        </Button>
-        <span>
-          Page {page} of {pages}
-        </span>
-        <Button
-          variant="outline"
-          disabled={page >= pages}
-          onClick={() => setPage(page + 1)}
-        >
-          Next
-        </Button>
-      </div>
     </div>
   )
 }
 
+function LinkFields({
+  values,
+  setValues,
+  includeReference = false,
+}: {
+  values: LinkForm
+  setValues: (value: LinkForm) => void
+  includeReference?: boolean
+}) {
+  function set(key: keyof LinkForm, value: string) {
+    setValues({ ...values, [key]: value })
+  }
+  return (
+    <div className="space-y-5">
+      {includeReference && (
+        <Field id="reference" label="Invoice reference" required>
+          <Input
+            id="reference"
+            required
+            maxLength={255}
+            value={values.orderReference}
+            onChange={(e) => set("orderReference", e.target.value)}
+          />
+        </Field>
+      )}
+      <Field id="title" label="Title / invoice name" required>
+        <Input
+          id="title"
+          required
+          maxLength={255}
+          value={values.title}
+          onChange={(e) => set("title", e.target.value)}
+          placeholder="Website design deposit"
+        />
+      </Field>
+      <Field id="amount" label="Amount (BCH)" required>
+        <Input
+          id="amount"
+          required
+          inputMode="decimal"
+          value={values.amount}
+          onChange={(e) => set("amount", e.target.value)}
+          placeholder="0.05"
+        />
+      </Field>
+      <Field id="address" label="Recipient BCH address" required>
+        <Input
+          id="address"
+          required
+          value={values.address}
+          onChange={(e) => set("address", e.target.value)}
+          placeholder="bitcoincash:..."
+          autoComplete="off"
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          Funds go directly to this address. Check it carefully before sharing.
+        </p>
+      </Field>
+      <Field id="description" label="Description (optional)">
+        <textarea
+          id="description"
+          className="dashboard-control min-h-24 w-full px-3 py-2 text-sm"
+          maxLength={2000}
+          value={values.description}
+          onChange={(e) => set("description", e.target.value)}
+        />
+      </Field>
+      <Field id="expiry" label="Expiry (optional)">
+        <Input
+          id="expiry"
+          type="datetime-local"
+          value={values.expiry}
+          onChange={(e) => set("expiry", e.target.value)}
+        />
+      </Field>
+    </div>
+  )
+}
+type LinkForm = {
+  orderReference: string
+  title: string
+  amount: string
+  address: string
+  description: string
+  expiry: string
+}
+function localDatetime(value: string) {
+  const date = new Date(value)
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16)
+}
+function defaultForm(): LinkForm {
+  return {
+    orderReference: `PP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+    title: "",
+    amount: "",
+    address: "",
+    description: "",
+    expiry: "",
+  }
+}
+function validateForm(values: LinkForm): string | null {
+  if (!values.orderReference.trim() || !values.title.trim())
+    return "Enter an invoice reference and title."
+  if (
+    !/^\d+(\.\d{1,8})?$/.test(values.amount.trim()) ||
+    !/[1-9]/.test(values.amount)
+  )
+    return "Enter a positive BCH amount with up to 8 decimal places."
+  if (!validAddress(values.address.trim()))
+    return "Enter a valid Bitcoin Cash mainnet cash address."
+  if (values.expiry && new Date(values.expiry).getTime() <= Date.now())
+    return "Choose a future expiry date and time."
+  return null
+}
 export function NewLinkPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const [title, setTitle] = useState("")
-  const [amount, setAmount] = useState("")
-  const [address, setAddress] = useState("")
-  const [description, setDescription] = useState("")
-  const [expiry, setExpiry] = useState("")
+  const cache = useQueryClient()
+  const [values, setValues] = useState<LinkForm>(defaultForm)
   const [error, setError] = useState("")
-  function submit(event: React.FormEvent) {
+  const create = useMutation({
+    mutationFn: createLink,
+    onSuccess: (link) => {
+      cache.invalidateQueries({ queryKey: ["payment-links"] })
+      cache.invalidateQueries({ queryKey: ["payment-summary"] })
+      toast.success("Payment link created")
+      navigate({ to: "/dashboard/payment-links/$id", params: { id: link.id } })
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  })
+  function submit(event: FormEvent) {
     event.preventDefault()
-    const normalized = amount.trim()
-    if (!/^\d+(\.\d{1,8})?$/.test(normalized) || !/[1-9]/.test(normalized))
-      return setError(
-        "Enter a positive BCH amount with up to 8 decimal places.",
-      )
-    if (!validAddress(address.trim()))
-      return setError("Enter a valid Bitcoin Cash mainnet cash address.")
-    if (expiry && new Date(expiry).getTime() <= Date.now())
-      return setError("Choose a future expiry date and time.")
-    const link = createLink({
-      title: title.trim(),
-      amount: normalized,
-      address: address.trim(),
-      description: description.trim(),
-      merchant: user?.full_name || "ProofPay merchant",
-      expiresAt: expiry ? new Date(expiry).toISOString() : null,
+    const problem = validateForm(values)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    setError("")
+    create.mutate({
+      ...values,
+      title: values.title.trim(),
+      orderReference: values.orderReference.trim(),
+      address: values.address.trim(),
+      amount: values.amount.trim(),
+      expiresAt: values.expiry ? new Date(values.expiry).toISOString() : null,
     })
-    toast.success("Demo payment link created")
-    navigate({ to: "/dashboard/payment-links/$id", params: { id: link.id } })
   }
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -280,70 +445,13 @@ export function NewLinkPage() {
         title="Create payment link"
         description="Set the details your customer will see at checkout."
       />
-      <DemoNotice />
       <form
         onSubmit={submit}
         className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]"
       >
         <div className={`${card} space-y-5`}>
-          <div className="border-b pb-4">
-            <h2 className="font-semibold">Payment details</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Set up the checkout page your customer will open.
-            </p>
-          </div>
-          <Field id="title" label="Title / invoice name" required>
-            <Input
-              id="title"
-              required
-              maxLength={100}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Website design deposit"
-            />
-          </Field>
-          <Field id="amount" label="Amount (BCH)" required>
-            <Input
-              id="amount"
-              required
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.05"
-            />
-          </Field>
-          <Field id="address" label="Recipient BCH address" required>
-            <Input
-              id="address"
-              required
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="bitcoincash:..."
-              autoComplete="off"
-            />
-            <p className="mt-1.5 text-xs text-slate-500">
-              Funds go directly to this Bitcoin Cash address. Check it carefully
-              before sharing.
-            </p>
-          </Field>
-          <Field id="description" label="Description (optional)">
-            <textarea
-              id="description"
-              className="dashboard-control min-h-24 w-full px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-emerald-700"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={500}
-              placeholder="What is this payment for?"
-            />
-          </Field>
-          <Field id="expiry" label="Expiry (optional)">
-            <Input
-              id="expiry"
-              type="datetime-local"
-              value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
-            />
-          </Field>
+          <h2 className="border-b pb-4 font-semibold">Payment details</h2>
+          <LinkFields values={values} setValues={setValues} includeReference />
           {error && (
             <p role="alert" className="text-sm text-red-700">
               {error}
@@ -356,151 +464,258 @@ export function NewLinkPage() {
             >
               Cancel
             </Link>
-            <Button type="submit">
+            <Button type="submit" disabled={create.isPending}>
               Create link <ArrowRight />
             </Button>
           </div>
         </div>
         <aside className="space-y-4">
           <div className={`${card} space-y-3`}>
-            <span className="grid size-11 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
-              <Wallet className="size-5" />
-            </span>
+            <Wallet className="size-6 text-emerald-700" />
             <h2 className="font-semibold">Direct to your wallet</h2>
             <p className="text-sm leading-6 text-slate-500">
-              Customers can scan a QR code or open the payment URI in their BCH
-              wallet. Check your address carefully before sharing.
+              Customers can scan the QR code or open the payment URI in a BCH
+              wallet.
             </p>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-            Demo requests are saved in this browser. Payment detection and
-            verification are not connected.
-          </div>
+          <DemoNotice />
         </aside>
       </form>
     </div>
   )
 }
-function Field({
-  id,
-  label,
-  required,
-  children,
-}: {
-  id: string
-  label: string
-  required?: boolean
-  children: React.ReactNode
-}) {
+
+function DraftEditor({ link }: { link: PaymentLink }) {
+  const cache = useQueryClient()
+  const [values, setValues] = useState<LinkForm>({
+    orderReference: link.orderReference,
+    title: link.title,
+    amount: link.amount,
+    address: link.address,
+    description: link.description,
+    expiry: localDatetime(link.expiresAt),
+  })
+  const [error, setError] = useState("")
+  const update = useMutation({
+    mutationFn: () =>
+      updateLink(link.id, {
+        ...values,
+        expiresAt: values.expiry ? new Date(values.expiry).toISOString() : null,
+      }),
+    onSuccess: () => {
+      cache.invalidateQueries({ queryKey: ["payment-link", link.id] })
+      cache.invalidateQueries({ queryKey: ["payment-links"] })
+      toast.success("Draft saved")
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  })
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const problem = validateForm(values)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    update.mutate()
+  }
   return (
-    <div className="block space-y-2 [&_input]:h-11 [&_input]:rounded-lg [&_input]:border-[#dbe5e7] [&_input]:bg-white">
-      <label htmlFor={id} className="block text-sm font-medium">
-        {label} {required && <span className="text-red-700">*</span>}
-      </label>
-      {children}
-    </div>
+    <form onSubmit={submit} className={`${card} space-y-5`}>
+      <h2 className="font-semibold">Edit draft</h2>
+      <LinkFields values={values} setValues={setValues} />
+      {error && (
+        <p role="alert" className="text-sm text-red-700">
+          {error}
+        </p>
+      )}
+      <Button type="submit" disabled={update.isPending}>
+        Save draft
+      </Button>
+    </form>
   )
 }
-
 export function LinkDetails({ id }: { id: string }) {
-  const link = getLink(id)
-  if (!link)
-    return (
-      <EmptyState
-        title="Payment link not found"
-        description="This demo link may have been created in another browser."
-      />
-    )
+  const cache = useQueryClient()
+  const navigate = useNavigate()
+  const query = useQuery(linkQuery(id))
+  const [error, setError] = useState("")
+  const issue = useMutation({
+    mutationFn: () => issueLink(id),
+    onSuccess: () => {
+      cache.invalidateQueries({ queryKey: ["payment-link", id] })
+      cache.invalidateQueries({ queryKey: ["payment-links"] })
+      cache.invalidateQueries({ queryKey: ["payment-summary"] })
+      toast.success("Request issued")
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  })
+  const cancel = useMutation({
+    mutationFn: () => cancelLink(id),
+    onSuccess: () => {
+      cache.invalidateQueries({ queryKey: ["payment-link", id] })
+      cache.invalidateQueries({ queryKey: ["payment-links"] })
+      cache.invalidateQueries({ queryKey: ["payment-summary"] })
+      toast.success("Request cancelled")
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  })
+  const remove = useMutation({
+    mutationFn: () => deleteLink(id),
+    onSuccess: () => {
+      cache.invalidateQueries({ queryKey: ["payment-links"] })
+      cache.invalidateQueries({ queryKey: ["payment-summary"] })
+      toast.success("Draft deleted")
+      navigate({ to: "/dashboard/payment-links" })
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  })
+  if (!query.data)
+    return <QueryState loading={query.isPending} error={query.error} />
+  const link = query.data
+  const shareable = link.status !== "draft" && link.status !== "cancelled"
   const url = checkoutUrl(link)
   return (
     <div className="space-y-6">
       <Link
         to="/dashboard/payment-links"
-        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-emerald-700"
+        className="inline-flex items-center gap-1 text-sm text-slate-500"
       >
         <ArrowLeft className="size-4" />
         Payment links
       </Link>
-      <DemoNotice />
       <div className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-        <div className={`${card} space-y-6`}>
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-            <Link2 className="size-7" />
+        <section className={`${card} space-y-5`}>
+          <div className="grid size-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+            <Link2 />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Payment link ready
-            </h1>
-            <p className="mt-2 text-slate-500">
-              Share this checkout page with your customer.
+          <h1 className="text-3xl font-bold">{link.title}</h1>
+          <LinkStatus link={link} />
+          {shareable ? (
+            <>
+              <div>
+                <label
+                  htmlFor="checkout-url"
+                  className="mb-2 block text-sm font-medium"
+                >
+                  Public checkout URL
+                </label>
+                <Input
+                  id="checkout-url"
+                  readOnly
+                  value={url}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <CopyButton value={url} label="Copy link" variant="default" />
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border px-4 text-sm"
+                >
+                  <ExternalLink className="size-4" />
+                  Preview checkout
+                </a>
+                <Link
+                  to="/dashboard/payment-links/$id/qr"
+                  params={{ id }}
+                  className="inline-flex items-center rounded-lg border px-4 text-sm"
+                >
+                  Show QR
+                </Link>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">
+              {link.status === "draft"
+                ? "Issue this draft to make checkout available."
+                : "This request has been cancelled."}
             </p>
+          )}
+          <div className="flex flex-wrap gap-2 border-t pt-4">
+            {link.status === "draft" && (
+              <>
+                <Button
+                  disabled={issue.isPending}
+                  onClick={() => issue.mutate()}
+                >
+                  Issue request
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    if (window.confirm("Delete this unpublished draft?"))
+                      remove.mutate()
+                  }}
+                >
+                  Delete draft
+                </Button>
+              </>
+            )}
+            {link.status === "pending" && !isExpired(link) && (
+              <Button
+                variant="outline"
+                disabled={cancel.isPending}
+                onClick={() => {
+                  if (window.confirm("Cancel this unpaid request?"))
+                    cancel.mutate()
+                }}
+              >
+                Cancel request
+              </Button>
+            )}
           </div>
-          <div>
-            <label
-              htmlFor="checkout-url"
-              className="mb-2 block text-sm font-medium"
-            >
-              Public checkout URL
-            </label>
-            <Input
-              id="checkout-url"
-              readOnly
-              value={url}
-              onFocus={(e) => e.currentTarget.select()}
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <CopyButton value={url} label="Copy link" variant="default" />
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-9 items-center gap-2 rounded-lg border px-4 text-sm font-medium hover:bg-slate-50"
-            >
-              <ExternalLink className="size-4" />
-              Preview checkout
-            </a>
-            <Link
-              to="/dashboard/payment-links/$id/qr"
-              params={{ id }}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border px-4 text-sm font-medium hover:bg-slate-50"
-            >
-              Show QR <ArrowRight className="size-4" />
-            </Link>
-          </div>
-        </div>
-        <div className={card}>
+          {error && (
+            <p role="alert" className="text-sm text-red-700">
+              {error}
+            </p>
+          )}
+        </section>
+        <section className={card}>
           <h2 className="mb-3 font-semibold">Request details</h2>
           <dl>
-            <DetailRow label="Invoice" value={link.title} />
+            <DetailRow label="Reference" value={link.orderReference} />
             <DetailRow label="Amount" value={`${link.amount} BCH`} />
-            <DetailRow label="Status" value={<LinkStatus link={link} />} />
-            <DetailRow
-              label="Recipient"
-              value={link.address || "Demo sample · no wallet address"}
-            />
+            <DetailRow label="Recipient" value={link.address} />
             <DetailRow label="Created" value={displayDate(link.createdAt)} />
             <DetailRow label="Expires" value={displayDate(link.expiresAt)} />
+            <DetailRow label="Payment" value={link.paymentStatus} />
           </dl>
           {link.description && (
             <p className="mt-4 text-sm text-slate-500">{link.description}</p>
           )}
-        </div>
+          {link.receiptId && (
+            <Link
+              to="/r/$publicReceiptId"
+              params={{ publicReceiptId: link.receiptId }}
+              className="mt-4 inline-block text-emerald-700"
+            >
+              View receipt →
+            </Link>
+          )}
+        </section>
       </div>
+      {link.status === "draft" && (
+        <DraftEditor key={link.id + link.createdAt} link={link} />
+      )}
     </div>
   )
 }
+
 export function MerchantQR({ id }: { id: string }) {
-  const link = getLink(id)
-  if (!link)
+  const query = useQuery(linkQuery(id))
+  if (!query.data)
+    return <QueryState loading={query.isPending} error={query.error} />
+  const link = query.data
+  if (link.status === "draft" || link.status === "cancelled")
     return (
       <EmptyState
-        title="Payment link not found"
-        description="Check the URL and try again."
+        title="QR unavailable"
+        description="Issue the request before sharing it."
       />
     )
   const url = checkoutUrl(link)
-  const uri = paymentUri(link)
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
@@ -508,52 +723,25 @@ export function MerchantQR({ id }: { id: string }) {
         title="Payment QR code"
         description="Display or share this request with your customer."
       />
-      <DemoNotice />
-      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-6 md:grid-cols-2">
         <div className={`${card} space-y-5 text-center`}>
-          <p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-700">
-            Checkout QR
-          </p>
+          <h2 className="font-semibold">Checkout QR</h2>
           <QRDisplay value={url} label="Scan to open checkout" large />
           <CopyButton value={url} label="Copy checkout URL" />
           <p className="break-all text-xs text-slate-500">{url}</p>
         </div>
-        <div className="space-y-5">
-          <div className={card}>
-            <p className="text-xs font-bold uppercase tracking-[.16em] text-slate-500">
-              Payment request
-            </p>
-            <h2 className="mt-3 text-xl font-bold">{link.title}</h2>
-            <p className="mt-1 text-sm text-slate-500">{link.merchant}</p>
-            <p className="mt-5 text-[32px] font-bold tracking-tight text-emerald-700">
-              {link.amount} <span className="text-base">BCH</span>
-            </p>
-            <dl className="mt-5">
-              <DetailRow label="Status" value={<LinkStatus link={link} />} />
-              <DetailRow label="Expires" value={displayDate(link.expiresAt)} />
-            </dl>
-            {link.address && (
-              <div className="mt-5">
-                <p className="mb-2 text-xs font-medium text-slate-500">
-                  Recipient address
-                </p>
-                <p className="break-all rounded-lg bg-[#f6f9f8] p-3 font-mono text-xs">
-                  {link.address}
-                </p>
-                <div className="mt-3">
-                  <CopyButton value={link.address} label="Copy address" />
-                </div>
-              </div>
-            )}
-          </div>
-          {uri && (
-            <div className={`${card} space-y-3`}>
-              <h2 className="font-semibold">Pay directly with a BCH wallet</h2>
-              <p className="text-sm text-slate-500">
-                This URI includes the recipient and exact BCH amount.
-              </p>
-              <CopyButton value={uri} label="Copy payment URI" />
-            </div>
+        <div className={`${card} space-y-5`}>
+          <h2 className="text-xl font-bold">{link.title}</h2>
+          <p className="text-3xl font-bold text-emerald-700">
+            {link.amount} BCH
+          </p>
+          <dl>
+            <DetailRow label="Status" value={<LinkStatus link={link} />} />
+            <DetailRow label="Expires" value={displayDate(link.expiresAt)} />
+            <DetailRow label="Recipient" value={link.address} />
+          </dl>
+          {link.paymentUri && (
+            <CopyButton value={link.paymentUri} label="Copy payment URI" />
           )}
           <PrintButton />
         </div>
@@ -561,117 +749,155 @@ export function MerchantQR({ id }: { id: string }) {
     </div>
   )
 }
+
 export function TransactionsPage() {
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState("all")
-  const links = listLinks().filter(
-    (link) =>
-      (status === "all" || link.status === status) &&
-      `${link.title} ${link.txid || ""}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  )
+  const [page, setPage] = useState(1)
+  const size = 10
+  const query = useQuery({
+    queryKey: ["payments", search, status, page],
+    queryFn: () =>
+      listPayments({
+        search: search || undefined,
+        status: status === "all" ? undefined : status,
+        limit: size,
+        offset: (page - 1) * size,
+      }),
+  })
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Payments"
         title="Transactions"
-        description="Network activity associated with your requests."
+        description="Payment outputs associated with your requests."
       />
-      <DemoNotice />
       <div className="dashboard-card flex flex-wrap gap-3 p-4">
         <SearchField
           value={search}
-          onChange={setSearch}
+          onChange={(value) => {
+            setSearch(value)
+            setPage(1)
+          }}
           placeholder="Search transactions"
         />
         <select
           aria-label="Filter transactions"
           className="dashboard-control h-9 px-3 text-sm"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(event) => {
+            setStatus(event.target.value)
+            setPage(1)
+          }}
         >
-          <option value="all">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="detected">Detected</option>
-          <option value="confirmed">Confirmed</option>
+          {["all", "detected", "confirmed", "orphaned"].map((value) => (
+            <option key={value} value={value}>
+              {value === "all"
+                ? "All statuses"
+                : value[0].toUpperCase() + value.slice(1)}
+            </option>
+          ))}
         </select>
       </div>
-      {links.some((link) => link.txid) ? (
-        <div className="dashboard-card overflow-x-auto">
-          <table className="dashboard-table w-full min-w-[650px] text-left text-sm">
-            <thead className="border-b bg-[#f8faf9]">
-              <tr>
-                <th className="p-4">Date</th>
-                <th className="p-4">Payment</th>
-                <th className="p-4">Amount</th>
-                <th className="p-4">Transaction ID</th>
-                <th className="p-4">Confirmations</th>
-              </tr>
-            </thead>
-            <tbody>
-              {links
-                .filter((link) => link.txid)
-                .map((link) => (
-                  <tr key={link.id} className="border-b last:border-0">
-                    <td className="p-4">{displayDate(link.createdAt)}</td>
+      {query.data ? (
+        query.data.data.length ? (
+          <div className="dashboard-card overflow-x-auto">
+            <table className="dashboard-table w-full min-w-[650px] text-left text-sm">
+              <thead className="border-b bg-[#f8faf9]">
+                <tr>
+                  <th className="p-4">Date</th>
+                  <th className="p-4">Amount</th>
+                  <th className="p-4">Transaction ID</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4">Confirmations</th>
+                </tr>
+              </thead>
+              <tbody>
+                {query.data.data.map((payment) => (
+                  <tr key={payment.id} className="border-b last:border-0">
                     <td className="p-4">
+                      {displayDate(payment.first_seen_at)}
+                    </td>
+                    <td className="p-4">
+                      {satsToBch(payment.amount_sats)} BCH
+                    </td>
+                    <td className="p-4 font-mono">
                       <Link
                         to="/dashboard/transactions/$id"
-                        params={{ id: link.id }}
+                        params={{ id: payment.id }}
                         className="text-emerald-700 hover:underline"
                       >
-                        {link.title}
+                        {payment.txid.slice(0, 16)}…
                       </Link>
                     </td>
-                    <td className="p-4">{link.amount} BCH</td>
-                    <td className="p-4 font-mono">
-                      {link.txid?.slice(0, 12)}…
+                    <td className="p-4">
+                      <StatusBadge status={payment.status} />
                     </td>
-                    <td className="p-4">{link.confirmations}</td>
+                    <td className="p-4">{payment.confirmations}</td>
                   </tr>
                 ))}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            title="No transactions yet"
+            description="Transaction records appear when a payment is observed."
+          />
+        )
       ) : (
-        <EmptyState
-          title="No detected transactions"
-          description="Transactions will appear when a payment monitoring API is connected."
+        <QueryState loading={query.isPending} error={query.error} />
+      )}
+      {!!query.data?.count && (
+        <PageControls
+          page={page}
+          count={query.data.count}
+          size={size}
+          setPage={setPage}
         />
       )}
     </div>
   )
 }
 export function TransactionDetails({ id }: { id: string }) {
-  const link = getLink(id)
-  if (!link?.txid)
-    return (
-      <EmptyState
-        title="Transaction unavailable"
-        description="No verified transaction is associated with this demo request."
-      />
-    )
+  const payment = useQuery({
+    queryKey: ["payment", id],
+    queryFn: () => getPayment(id),
+  })
+  const invoice = useQuery({
+    queryKey: ["payment-link", payment.data?.invoice_id],
+    queryFn: () => getLink(payment.data!.invoice_id),
+    enabled: !!payment.data,
+  })
+  if (!payment.data)
+    return <QueryState loading={payment.isPending} error={payment.error} />
+  const data = payment.data
   return (
     <div className="space-y-6">
       <PageHeader title="Transaction details" />
-      <DemoNotice />
+      {invoice.error && <QueryState loading={false} error={invoice.error} />}
       <div className={card}>
         <dl>
-          <DetailRow label="Payment" value={link.title} />
-          <DetailRow label="Amount" value={`${link.amount} BCH`} />
-          <DetailRow label="Transaction ID" value={link.txid} />
-          <DetailRow label="Confirmations" value={link.confirmations} />
-          <DetailRow label="Status" value={<LinkStatus link={link} />} />
           <DetailRow
-            label="Explorer"
-            value={<ExplorerLink txid={link.txid} />}
+            label="Payment"
+            value={invoice.data?.title ?? data.invoice_id}
+          />
+          <DetailRow
+            label="Amount"
+            value={`${satsToBch(data.amount_sats)} BCH`}
+          />
+          <DetailRow label="Transaction ID" value={data.txid} />
+          <DetailRow label="Output" value={data.vout} />
+          <DetailRow label="Confirmations" value={data.confirmations} />
+          <DetailRow
+            label="Status"
+            value={<StatusBadge status={data.status} />}
           />
         </dl>
-        {link.receiptId && (
+        {invoice.data?.receiptId && (
           <Link
             to="/r/$publicReceiptId"
-            params={{ publicReceiptId: link.receiptId }}
+            params={{ publicReceiptId: invoice.data.receiptId }}
             className="mt-4 inline-flex text-emerald-700"
           >
             View receipt
@@ -683,13 +909,17 @@ export function TransactionDetails({ id }: { id: string }) {
 }
 export function ReceiptsPage() {
   const [search, setSearch] = useState("")
-  const receipts = listLinks().filter(
-    (link) =>
-      link.receiptId &&
-      `${link.title} ${link.receiptId}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  )
+  const [page, setPage] = useState(1)
+  const size = 10
+  const query = useQuery({
+    queryKey: ["receipts", search, page],
+    queryFn: () =>
+      listReceipts({
+        search: search || undefined,
+        limit: size,
+        offset: (page - 1) * size,
+      }),
+  })
   return (
     <div className="space-y-6">
       <PageHeader
@@ -697,67 +927,80 @@ export function ReceiptsPage() {
         title="Receipts"
         description="Share proof when a payment has been verified."
       />
-      <DemoNotice />
       <div className="dashboard-card p-4">
         <SearchField
           value={search}
-          onChange={setSearch}
+          onChange={(value) => {
+            setSearch(value)
+            setPage(1)
+          }}
           placeholder="Search receipts"
         />
       </div>
-      {receipts.length ? (
-        <div className="dashboard-card overflow-x-auto">
-          <table className="dashboard-table w-full min-w-[650px] text-left text-sm">
-            <thead className="border-b bg-[#f8faf9]">
-              <tr>
-                <th className="p-4">Receipt ID</th>
-                <th className="p-4">Invoice</th>
-                <th className="p-4">Amount</th>
-                <th className="p-4">Payment date</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receipts.map((link) => (
-                <tr key={link.id} className="border-b last:border-0">
-                  <td className="p-4 font-medium">{link.receiptId}</td>
-                  <td className="p-4">{link.title}</td>
-                  <td className="p-4">{link.amount} BCH</td>
-                  <td className="p-4">
-                    {link.txid ? displayDate(link.createdAt) : "Not paid"}
-                  </td>
-                  <td className="p-4">
-                    <StatusBadge status={link.status} />
-                  </td>
-                  <td className="flex gap-3 p-4">
-                    <Link
-                      to="/r/$publicReceiptId"
-                      params={{ publicReceiptId: link.receiptId! }}
-                      className="text-emerald-700 hover:underline"
-                    >
-                      View
-                    </Link>
-                    <CopyButton
-                      value={receiptUrl(link.receiptId!)}
-                      label="Copy link"
-                    />
-                  </td>
+      {query.data ? (
+        query.data.data.length ? (
+          <div className="dashboard-card overflow-x-auto">
+            <table className="dashboard-table w-full min-w-[650px] text-left text-sm">
+              <thead className="border-b bg-[#f8faf9]">
+                <tr>
+                  <th className="p-4">Receipt ID</th>
+                  <th className="p-4">Invoice</th>
+                  <th className="p-4">Amount</th>
+                  <th className="p-4">Payment date</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {query.data.data.map((receipt) => (
+                  <tr key={receipt.id} className="border-b last:border-0">
+                    <td className="p-4 font-medium">{receipt.reference}</td>
+                    <td className="p-4">{receipt.invoice_reference}</td>
+                    <td className="p-4">
+                      {satsToBch(receipt.amount_sats)} BCH
+                    </td>
+                    <td className="p-4">{displayDate(receipt.verified_at)}</td>
+                    <td className="p-4">{receipt.current_status}</td>
+                    <td className="flex gap-3 p-4">
+                      <Link
+                        to="/r/$publicReceiptId"
+                        params={{ publicReceiptId: receipt.public_token }}
+                        className="text-emerald-700 hover:underline"
+                      >
+                        View
+                      </Link>
+                      <CopyButton
+                        value={receiptUrl(receipt.public_token)}
+                        label="Copy link"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            title="No receipts yet"
+            description="Receipts become available after a payment has been verified."
+          />
+        )
       ) : (
-        <EmptyState
-          title="No receipts yet"
-          description="Receipts become available after verified payment data is connected."
+        <QueryState loading={query.isPending} error={query.error} />
+      )}
+      {!!query.data?.count && (
+        <PageControls
+          page={page}
+          count={query.data.count}
+          size={size}
+          setPage={setPage}
         />
       )}
     </div>
   )
 }
-function PublicShell({ children }: { children: React.ReactNode }) {
+
+function PublicShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[#f5f8f8] px-4 py-8 text-slate-900 sm:py-14">
       <div className="mx-auto max-w-xl">
@@ -767,7 +1010,7 @@ function PublicShell({ children }: { children: React.ReactNode }) {
         >
           <span className="grid size-9 place-items-center rounded-xl bg-emerald-700 text-white">
             <CircleCheck className="size-5" />
-          </span>{" "}
+          </span>
           Proof<span className="text-emerald-700">Pay</span>
         </Link>
         {children}
@@ -778,65 +1021,101 @@ function PublicShell({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
-function MissingPublic() {
+function PublicState({ loading, error }: { loading: boolean; error: unknown }) {
   return (
     <PublicShell>
-      <EmptyState
-        title="Request not found"
-        description="This demo request may exist in a different browser, or the link is incorrect."
-      />
+      {loading ? (
+        <QueryState loading error={null} />
+      ) : (
+        <EmptyState
+          title="Request unavailable"
+          description={
+            error ? errorMessage(error) : "This request could not be found."
+          }
+        />
+      )}
     </PublicShell>
   )
 }
+function effectiveStatus(
+  status: PaymentStatus,
+  expiresAt: string,
+  paymentStatus: string,
+): PaymentStatus {
+  if (status === "pending" && new Date(expiresAt).getTime() <= Date.now())
+    return "expired"
+  if (status === "pending" && ["detected", "partial"].includes(paymentStatus))
+    return "detected"
+  return status
+}
 export function Checkout({ publicId }: { publicId: string }) {
-  const link = getLink(publicId)
-  if (!link) return <MissingPublic />
-  const uri = paymentUri(link)
-  const expired = isExpired(link)
+  const query = useQuery({
+    queryKey: ["public-link", publicId],
+    queryFn: () => getPublicLink(publicId),
+  })
+  if (!query.data)
+    return <PublicState loading={query.isPending} error={query.error} />
+  const link = query.data
+  const status = effectiveStatus(
+    link.status,
+    link.expires_at,
+    link.payment_status,
+  )
+  const payable = status === "pending" && !!link.payment_uri
   return (
     <PublicShell>
       <div className="space-y-5">
-        <DemoNotice />
         <div className={`${card} text-center`}>
           <div className="mx-auto mb-4 grid size-14 place-items-center rounded-full bg-emerald-50 text-emerald-700">
             <Wallet className="size-7" />
           </div>
           <p className="text-sm text-slate-500">Payment request from</p>
-          <h1 className="text-xl font-semibold">{link.merchant}</h1>
+          <h1 className="text-xl font-semibold">{link.merchant_name}</h1>
           <p className="mt-4 text-sm text-slate-500">{link.title}</p>
           {link.description && (
             <p className="mt-1 text-sm text-slate-500">{link.description}</p>
           )}
           <p className="mt-5 rounded-xl bg-emerald-50 py-4 text-3xl font-bold text-emerald-800">
-            {link.amount} BCH
+            {link.amount_bch} BCH
           </p>
-          {expired ? (
-            <p className="mt-5 text-red-700">This request has expired.</p>
-          ) : uri ? (
+          <div className="mt-5">
+            <StatusBadge status={status} />
+          </div>
+          {payable ? (
             <>
               <div className="my-6">
-                <QRDisplay value={uri} label="Scan to pay with a BCH wallet" />
+                <QRDisplay
+                  value={link.qr_payload || link.payment_uri!}
+                  label="Scan to pay with a BCH wallet"
+                />
               </div>
               <p className="text-xs text-slate-500">Recipient address</p>
               <p className="mt-1 break-all rounded-lg bg-slate-50 p-3 font-mono text-xs">
-                {link.address}
+                {link.receiving_address}
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
-                <a href={uri} className={primaryLink}>
+                <a href={link.payment_uri!} className={primaryLink}>
                   <Wallet className="size-4" />
                   Open wallet
                 </a>
-                <CopyButton value={link.address} label="Copy address" />
-                <CopyButton value={link.amount} label="Copy amount" />
+                <CopyButton
+                  value={link.receiving_address}
+                  label="Copy address"
+                />
+                <CopyButton value={link.amount_bch} label="Copy amount" />
+                <CopyButton
+                  value={link.payment_uri!}
+                  label="Copy payment URI"
+                />
               </div>
             </>
           ) : (
-            <p className="mt-6 text-sm text-amber-800">
-              This sample request has no wallet address. Create a link with your
-              own valid BCH address to try checkout.
+            <p className="mt-5 text-sm text-slate-600">
+              This request is not currently accepting payments.
             </p>
           )}
         </div>
+        <DemoNotice />
         <Link
           to="/p/$publicId/status"
           params={{ publicId }}
@@ -849,70 +1128,68 @@ export function Checkout({ publicId }: { publicId: string }) {
   )
 }
 export function PaymentStatusPage({ publicId }: { publicId: string }) {
-  const link = getLink(publicId)
-  if (!link) return <MissingPublic />
-  const state: PaymentStatus = isExpired(link) ? "expired" : link.status
+  const query = useQuery({
+    queryKey: ["public-link-status", publicId],
+    queryFn: () => getPublicLink(publicId, true),
+  })
+  if (!query.data)
+    return <PublicState loading={query.isPending} error={query.error} />
+  const link = query.data
+  const status = effectiveStatus(
+    link.status,
+    link.expires_at,
+    link.payment_status,
+  )
+  const heading = {
+    draft: "Request unavailable",
+    pending: "Waiting for payment",
+    detected: "Payment detected",
+    confirmed: "Payment confirmed",
+    expired: "Request expired",
+    cancelled: "Request cancelled",
+    orphaned: "Payment requires review",
+  }[status]
   return (
     <PublicShell>
       <div className="space-y-5">
-        <DemoNotice />
         <div className={`${card} space-y-6 text-center`}>
           <div className="mx-auto grid size-16 place-items-center rounded-full bg-emerald-50 text-emerald-700">
-            {state === "confirmed" ? (
+            {status === "confirmed" ? (
               <CircleCheck className="size-8" />
             ) : (
               <Clock3 className="size-8" />
             )}
           </div>
           <div>
-            <StatusBadge status={state} />
-            <h1 className="mt-3 text-2xl font-semibold">
-              {state === "confirmed"
-                ? "Payment confirmed"
-                : state === "detected"
-                  ? "Payment detected"
-                  : state === "expired"
-                    ? "Request expired"
-                    : "Waiting for payment"}
-            </h1>
+            <StatusBadge status={status} />
+            <h1 className="mt-3 text-2xl font-semibold">{heading}</h1>
             <p className="mt-2 text-sm text-slate-500">
-              {state === "pending"
-                ? "No payment has been detected. Automatic payment detection is unavailable in demo mode."
-                : state === "detected"
-                  ? "A payment was detected and is awaiting network confirmation."
-                  : state === "confirmed"
-                    ? "Payment was confirmed by the network."
-                    : "This request is no longer accepting payments."}
+              A checkout visit or QR scan does not confirm payment.
             </p>
           </div>
-          <PaymentTimeline status={state} />
-          <div className="text-left">
-            <dl>
-              <DetailRow label="Invoice" value={link.title} />
-              <DetailRow label="Amount" value={`${link.amount} BCH`} />
-              <DetailRow
-                label="Transaction ID"
-                value={link.txid || "Not available"}
-              />
-              <DetailRow
-                label="Confirmations"
-                value={link.txid ? link.confirmations : "Not available"}
-              />
-              <DetailRow
-                label="Explorer"
-                value={<ExplorerLink txid={link.txid} />}
-              />
-            </dl>
-          </div>
-          {link.receiptId && (
+          <PaymentTimeline status={status} />
+          <dl className="text-left">
+            <DetailRow label="Invoice" value={link.title} />
+            <DetailRow label="Amount" value={`${link.amount_bch} BCH`} />
+            <DetailRow label="Recipient" value={link.receiving_address} />
+            <DetailRow label="Expires" value={displayDate(link.expires_at)} />
+          </dl>
+          {link.receipt_url && (
             <Link
               to="/r/$publicReceiptId"
-              params={{ publicReceiptId: link.receiptId }}
+              params={{ publicReceiptId: link.receipt_url.split("/").pop()! }}
               className="text-sm font-medium text-emerald-700"
             >
-              View receipt <ArrowRight className="inline size-4" />
+              View receipt →
             </Link>
           )}
+          <Button
+            variant="outline"
+            onClick={() => query.refetch()}
+            disabled={query.isFetching}
+          >
+            Refresh status
+          </Button>
         </div>
         <Link
           to="/p/$publicId"
@@ -931,56 +1208,48 @@ export function PublicReceipt({
 }: {
   publicReceiptId: string
 }) {
-  const link = listLinks().find((item) => item.receiptId === publicReceiptId)
-  if (!link) return <MissingPublic />
-  const confirmed = link.status === "confirmed" && !!link.txid
+  const query = useQuery({
+    queryKey: ["public-receipt", publicReceiptId],
+    queryFn: () => getPublicReceipt(publicReceiptId),
+  })
+  if (!query.data)
+    return <PublicState loading={query.isPending} error={query.error} />
+  const receipt = query.data
   return (
     <PublicShell>
-      <div className="space-y-5">
-        <DemoNotice />
-        <div className={`${card} space-y-6`}>
-          <div className="text-center">
-            <div className="mx-auto mb-4 grid size-16 place-items-center rounded-full bg-emerald-50 text-emerald-700">
-              <Receipt className="size-8" />
-            </div>
-            <h1 className="text-2xl font-semibold">
-              {confirmed ? "Payment confirmed" : "Awaiting confirmation"}
-            </h1>
-            <p className="mt-2 text-sm text-slate-500">
-              {confirmed
-                ? "Payment details from the Bitcoin Cash network."
-                : "This demo receipt is not proof of payment."}
-            </p>
+      <div className={`${card} space-y-6`}>
+        <div className="text-center">
+          <div className="mx-auto mb-4 grid size-16 place-items-center rounded-full bg-emerald-50 text-emerald-700">
+            <ReceiptIcon className="size-8" />
           </div>
-          <dl>
-            <DetailRow label="Amount" value={`${link.amount} BCH`} />
-            <DetailRow label="Merchant" value={link.merchant} />
-            <DetailRow label="Invoice" value={link.title} />
-            <DetailRow label="Receipt ID" value={publicReceiptId} />
-            <DetailRow
-              label="Transaction ID"
-              value={link.txid || "Not available"}
-            />
-            <DetailRow
-              label="Date"
-              value={link.txid ? displayDate(link.createdAt) : "Not paid"}
-            />
-            <DetailRow
-              label="Status"
-              value={
-                <StatusBadge status={confirmed ? "confirmed" : "pending"} />
-              }
-            />
-          </dl>
-          <div className="flex flex-wrap justify-center gap-2">
-            <CopyButton
-              value={receiptUrl(publicReceiptId)}
-              label="Copy receipt link"
-              variant="default"
-            />
-            <PrintButton />
-            {link.txid && <ExplorerLink txid={link.txid} />}
-          </div>
+          <h1 className="text-2xl font-semibold">Payment receipt</h1>
+          <p className="mt-2 text-sm text-slate-500">{receipt.statement}</p>
+        </div>
+        <dl>
+          <DetailRow
+            label="Amount"
+            value={`${satsToBch(receipt.amount_sats)} BCH`}
+          />
+          <DetailRow label="Merchant" value={receipt.merchant_name} />
+          <DetailRow label="Invoice" value={receipt.invoice_reference} />
+          <DetailRow label="Receipt ID" value={receipt.reference} />
+          <DetailRow
+            label="Verified"
+            value={displayDate(receipt.verified_at)}
+          />
+          <DetailRow label="Status" value={receipt.current_status} />
+          <DetailRow
+            label="Outputs"
+            value={receipt.output_refs.join(", ") || "Unavailable"}
+          />
+        </dl>
+        <div className="flex flex-wrap justify-center gap-2">
+          <CopyButton
+            value={receiptUrl(publicReceiptId)}
+            label="Copy receipt link"
+            variant="default"
+          />
+          <PrintButton />
         </div>
       </div>
     </PublicShell>

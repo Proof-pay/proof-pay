@@ -289,6 +289,21 @@ def cancel_request(
     return invoice_view(session, invoice)
 
 
+@router.delete("/payment-requests/{invoice_id}", status_code=204)
+def delete_request(
+    session: SessionDep, user: CurrentUser, invoice_id: uuid.UUID
+) -> None:
+    """Only an unpublished draft with no payment history can be removed."""
+    invoice = owned_invoice(session, _merchant(session, user), invoice_id, lock=True)
+    receipt = session.exec(
+        select(Receipt).where(Receipt.invoice_id == invoice.id)
+    ).first()
+    if invoice.status != "draft" or outputs(session, invoice) or receipt:
+        raise HTTPException(409, "Only unpaid draft requests can be deleted")
+    session.delete(invoice)
+    _commit(session)
+
+
 @router.post("/payment-requests/{invoice_id}/claims/{txid}", response_model=InvoiceView)
 def claim_transaction(
     session: SessionDep,

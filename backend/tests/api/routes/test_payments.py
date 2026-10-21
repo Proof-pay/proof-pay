@@ -189,6 +189,21 @@ def test_node_network_and_locking_script(monkeypatch):
     assert verify_transaction(provider, TX1, "mainnet", ADDRESS) == []
 
 
+def test_delete_only_unpublished_owned_drafts(context):
+    client, headers, _ = context
+    draft = create_invoice(client, headers[0], reference="DELETE-1").json()
+    path = f"/api/v1/payment-requests/{draft['id']}"
+    assert client.delete(path, headers=headers[1]).status_code == 404
+    assert client.delete(path, headers=headers[0]).status_code == 204
+    assert client.get(path, headers=headers[0]).status_code == 404
+
+    issued = create_invoice(client, headers[0], reference="DELETE-2").json()
+    issued_path = f"/api/v1/payment-requests/{issued['id']}"
+    assert client.post(f"{issued_path}/issue", headers=headers[0]).status_code == 200
+    assert client.delete(issued_path, headers=headers[0]).status_code == 409
+    assert client.get(issued_path, headers=headers[0]).status_code == 200
+
+
 def test_lifecycle_privacy_idempotency_and_ownership(context):
     client, headers, fake = context
     created = create_invoice(client, headers[0], key="once")

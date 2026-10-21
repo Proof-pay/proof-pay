@@ -7,7 +7,7 @@ All paths below have the `/api/v1` prefix. Existing login, registration, passwor
 | Existing page or workflow | API |
 | --- | --- |
 | Merchant payment settings | `GET/PATCH /merchant/settings` |
-| Create, browse, inspect, edit, issue, cancel links | `POST/GET /payment-requests`, `GET/PATCH /payment-requests/{id}`, `POST /payment-requests/{id}/issue`, `POST /payment-requests/{id}/cancel` |
+| Create, browse, inspect, edit, issue, cancel links | `POST/GET /payment-requests`, `GET/PATCH/DELETE /payment-requests/{id}`, `POST /payment-requests/{id}/issue`, `POST /payment-requests/{id}/cancel` |
 | Checkout, QR, polling status | `GET /public/payment-requests/{token}`, `GET /public/payment-requests/{token}/status` |
 | Claim an observed transaction | `POST /payment-requests/{id}/claims/{txid}` with optional `{"vouts":[0,1]}` |
 | Transaction history and detail | `GET /payments`, `GET /payments/{id}`, `GET /payment-requests/{id}` |
@@ -25,6 +25,8 @@ Amounts are decimal strings at the API boundary, converted to integer satoshis. 
 ## Lifecycle and attribution
 
 `status` is the request lifecycle: `draft → pending → confirmed`, with `pending → expired` at the expiry time and `draft/pending → cancelled` while unpaid. A confirmation loss can move `confirmed → pending` or `expired`. The stored `payment_status` is `pending`, `partial`, `detected`, or `confirmed`. `partial` means at least one verified output but less than the requested total. `detected` means enough outputs were seen but the confirmed total is below the threshold. `confirmed` means confirmed eligible outputs meet or exceed the request. Editing is restricted to drafts; issuing freezes amount, address, reference, description, expiry, and confirmation policy. Cancelling after any claim is rejected.
+
+`DELETE /payment-requests/{id}` permanently removes only an unpublished draft with no payment outputs or receipt. Issued requests remain in the database and can only be cancelled while unpaid.
 
 This deployment uses a shared receiving address and **explicit transaction claims**. The merchant chooses the invoice and submits a candidate transaction ID. The server fetches the transaction from Bitcoin Cash Node, checks the node network, matching destination, output index, actual satoshis, and confirmations, then allocates each selected output under a `(network, txid, vout)` unique constraint. A transaction with multiple outputs to the address requires explicit `vouts`; amount matching never attributes an output automatically. Claims may be repeated safely. A payment after expiry or cancellation is retained as late evidence and does not settle the request. For safety, a first claim after expiry is treated as late even if the transaction may have appeared earlier; this shared-address setup cannot reliably prove when an unclaimed mempool payment first arrived. Overpayments are recorded in full; the request is satisfied at the threshold. A receipt snapshots the qualifying amount and output references when first confirmed. Later confirmation loss changes `current_status` on the receipt response, never the issued snapshot. A receipt proves observed BCH payment against a request, not goods delivery or payer identity.
 

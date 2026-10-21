@@ -5,7 +5,6 @@ import {
   Clock3,
   Copy,
   Download,
-  ExternalLink,
   type LucideIcon,
   Printer,
   Radio,
@@ -24,8 +23,8 @@ export function DemoNotice() {
     <div className="flex items-start gap-3 rounded-xl border border-[#f2dfb4] bg-[#fff9ec] px-4 py-3 text-sm text-[#79551d]">
       <CircleAlert className="mt-0.5 size-4 shrink-0" />
       <p>
-        <strong>Demo mode</strong> · Payment requests are stored in this
-        browser. No blockchain monitoring or payment verification is connected.
+        <strong>Payment request</strong> · A QR code or checkout visit does not
+        confirm payment. Share a receipt only when one is available.
       </p>
     </div>
   )
@@ -98,16 +97,22 @@ export function PageHeader({
 }
 export function StatusBadge({ status }: { status: PaymentStatus }) {
   const styles = {
+    draft: "border border-slate-200 bg-slate-50 text-slate-700",
     pending: "border border-amber-200 bg-amber-50 text-amber-800",
     detected: "border border-blue-200 bg-blue-50 text-blue-800",
     confirmed: "border border-green-200 bg-green-50 text-green-800",
     expired: "border border-red-200 bg-red-50 text-red-800",
+    cancelled: "border border-slate-200 bg-slate-100 text-slate-600",
+    orphaned: "border border-red-200 bg-red-50 text-red-800",
   }
   const Icon = {
+    draft: Clock3,
     pending: Clock3,
     detected: Radio,
     confirmed: Check,
     expired: CircleAlert,
+    cancelled: CircleAlert,
+    orphaned: CircleAlert,
   }[status]
   return (
     <span
@@ -121,7 +126,13 @@ export function StatusBadge({ status }: { status: PaymentStatus }) {
   )
 }
 export function LinkStatus({ link }: { link: PaymentLink }) {
-  return <StatusBadge status={isExpired(link) ? "expired" : link.status} />
+  const status = isExpired(link)
+    ? "expired"
+    : link.status === "pending" &&
+        ["detected", "partial"].includes(link.paymentStatus)
+      ? "detected"
+      : link.status
+  return <StatusBadge status={status} />
 }
 export function CopyButton({
   value,
@@ -249,7 +260,7 @@ export function PaymentTable({ links }: { links: PaymentLink[] }) {
                   {link.title}
                 </Link>
                 <p className="mt-1 text-xs text-slate-500">
-                  {link.merchant} · {displayDate(link.createdAt)}
+                  {link.orderReference} · {displayDate(link.createdAt)}
                 </p>
               </div>
               <p className="shrink-0 font-bold text-slate-900">
@@ -292,7 +303,7 @@ export function PaymentTable({ links }: { links: PaymentLink[] }) {
                     {link.title}
                   </Link>
                   <span className="block text-xs font-normal text-slate-500">
-                    {link.merchant}
+                    {link.orderReference}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-5 py-4 font-semibold">
@@ -313,33 +324,39 @@ export function PaymentTable({ links }: { links: PaymentLink[] }) {
                     >
                       Details
                     </Link>
-                    <button
-                      type="button"
-                      className="text-emerald-700 hover:underline"
-                      onClick={() =>
-                        navigator.clipboard
-                          .writeText(checkoutUrl(link))
-                          .then(() => toast.success("Checkout link copied"))
-                          .catch(() => toast.error("Could not copy link"))
-                      }
-                    >
-                      Copy
-                    </button>
-                    <a
-                      href={checkoutUrl(link)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-emerald-700 hover:underline"
-                    >
-                      Preview
-                    </a>
-                    <Link
-                      to="/dashboard/payment-links/$id/qr"
-                      params={{ id: link.id }}
-                      className="text-emerald-700 hover:underline"
-                    >
-                      QR
-                    </Link>
+                    {link.status !== "draft" && link.status !== "cancelled" && (
+                      <button
+                        type="button"
+                        className="text-emerald-700 hover:underline"
+                        onClick={() =>
+                          navigator.clipboard
+                            .writeText(checkoutUrl(link))
+                            .then(() => toast.success("Checkout link copied"))
+                            .catch(() => toast.error("Could not copy link"))
+                        }
+                      >
+                        Copy
+                      </button>
+                    )}
+                    {link.status !== "draft" && link.status !== "cancelled" && (
+                      <a
+                        href={checkoutUrl(link)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-700 hover:underline"
+                      >
+                        Preview
+                      </a>
+                    )}
+                    {link.status !== "draft" && link.status !== "cancelled" && (
+                      <Link
+                        to="/dashboard/payment-links/$id/qr"
+                        params={{ id: link.id }}
+                        className="text-emerald-700 hover:underline"
+                      >
+                        QR
+                      </Link>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -374,21 +391,6 @@ export function PrintButton() {
     </Button>
   )
 }
-export function ExplorerLink({ txid }: { txid: string | null }) {
-  return txid ? (
-    <a
-      className="inline-flex items-center gap-1 text-emerald-700 hover:underline"
-      href={`https://blockchair.com/bitcoin-cash/transaction/${txid}`}
-      rel="noreferrer"
-      target="_blank"
-    >
-      View on explorer <ExternalLink className="size-4" />
-    </a>
-  ) : (
-    <span className="text-slate-400">Unavailable</span>
-  )
-}
-
 export function PaymentTimeline({ status }: { status: PaymentStatus }) {
   const stage = status === "confirmed" ? 2 : status === "detected" ? 1 : 0
   return (

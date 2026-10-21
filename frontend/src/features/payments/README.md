@@ -1,7 +1,15 @@
-# Payment UI demo service
+# Payment management UI
 
-The FastAPI backend has no payment link, transaction, receipt, or chain monitoring endpoints. `service.ts` is an isolated, typed browser-only demo store. It ships one pending sample request and stores newly created requests in the current browser's `localStorage`.
+The dashboard uses the authenticated FastAPI payment API under `/api/v1`.
+Payment links are stored in the database and are visible across browsers.
+Creating a link creates a draft and immediately issues it. If issuing fails,
+the draft remains in the payment links list so it can be retried.
 
-A copied checkout URL for a newly created link only resolves in that same browser. Payment status remains pending; no timer or button can claim network confirmation. The sample request has no wallet address, so it cannot produce an active wallet URI. New requests require a valid Bitcoin Cash mainnet cash address and encode that address and the exact decimal amount in the wallet QR. The merchant QR encodes the checkout URL.
+Unpublished drafts can be edited or deleted. Issued unpaid requests can be
+cancelled. Published records and their payment history cannot be deleted.
+Public checkout and receipt pages read token-scoped endpoints without login.
 
-To make links shareable between devices and receipts verifiable, replace this store with authenticated merchant and public payment APIs, plus actual blockchain monitoring. Keep private merchant fields out of public responses.
+The QR code contains the payment URI returned by the backend. Scanning or
+opening checkout never marks a request paid. This UI does not submit transaction
+claims or contact BCH nodes or explorers. Transaction and receipt pages only
+show records returned by the existing backend.
