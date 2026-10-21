@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  type LucideIcon,
   Printer,
   Radio,
   Search,
@@ -20,9 +21,48 @@ import { checkoutUrl, displayDate, isExpired } from "./service"
 
 export function DemoNotice() {
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-      <strong>Demo mode</strong> · Payment requests are stored in this browser.
-      No blockchain monitoring or payment verification is connected.
+    <div className="flex items-start gap-3 rounded-xl border border-[#f2dfb4] bg-[#fff9ec] px-4 py-3 text-sm text-[#79551d]">
+      <CircleAlert className="mt-0.5 size-4 shrink-0" />
+      <p>
+        <strong>Demo mode</strong> · Payment requests are stored in this
+        browser. No blockchain monitoring or payment verification is connected.
+      </p>
+    </div>
+  )
+}
+export function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = "emerald",
+}: {
+  label: string
+  value: string
+  hint: string
+  icon: LucideIcon
+  tone?: "emerald" | "blue" | "amber" | "violet"
+}) {
+  const toneStyles = {
+    emerald: "bg-emerald-50 text-emerald-700",
+    blue: "bg-sky-50 text-sky-700",
+    amber: "bg-amber-50 text-amber-700",
+    violet: "bg-violet-50 text-violet-700",
+  }
+  return (
+    <div className="dashboard-card p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-slate-500">{label}</p>
+        <span
+          className={`grid size-10 shrink-0 place-items-center rounded-xl ${toneStyles[tone]}`}
+        >
+          <Icon className="size-[19px]" />
+        </span>
+      </div>
+      <p className="mt-3 text-[28px] font-bold tracking-[-.045em] text-[#14252f]">
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">{hint}</p>
     </div>
   )
 }
@@ -38,18 +78,18 @@ export function PageHeader({
   action?: React.ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="flex flex-wrap items-center justify-between gap-4">
       <div>
         {eyebrow && (
-          <p className="mb-1 text-xs font-bold uppercase tracking-[.16em] text-emerald-700">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-[.16em] text-emerald-700">
             {eyebrow}
           </p>
         )}
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+        <h1 className="text-[28px] font-bold tracking-[-.045em] text-[#14252f] sm:text-[32px]">
           {title}
         </h1>
         {description && (
-          <p className="mt-2 text-sm text-slate-500">{description}</p>
+          <p className="mt-1.5 text-sm text-slate-500">{description}</p>
         )}
       </div>
       {action}
@@ -58,10 +98,10 @@ export function PageHeader({
 }
 export function StatusBadge({ status }: { status: PaymentStatus }) {
   const styles = {
-    pending: "bg-amber-50 text-amber-800",
-    detected: "bg-blue-50 text-blue-800",
-    confirmed: "bg-green-50 text-green-800",
-    expired: "bg-red-50 text-red-800",
+    pending: "border border-amber-200 bg-amber-50 text-amber-800",
+    detected: "border border-blue-200 bg-blue-50 text-blue-800",
+    confirmed: "border border-green-200 bg-green-50 text-green-800",
+    expired: "border border-red-200 bg-red-50 text-red-800",
   }
   const Icon = {
     pending: Clock3,
@@ -71,7 +111,7 @@ export function StatusBadge({ status }: { status: PaymentStatus }) {
   }[status]
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${styles[status]}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${styles[status]}`}
     >
       <Icon className="size-3.5" />
       {status === "detected"
@@ -134,13 +174,14 @@ export function QRDisplay({
   }
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="rounded-2xl border bg-white p-5">
+      <div className="max-w-full rounded-2xl border border-[#e3eaed] bg-white p-4 shadow-[0_8px_28px_rgba(20,45,50,.06)] sm:p-5">
         <QRCodeSVG
           id={`qr-${label.replace(/\W/g, "-")}`}
           value={value}
           size={size}
           marginSize={0}
           level="M"
+          className="max-w-full h-auto"
         />
       </div>
       <p className="text-center text-sm text-slate-500">{label}</p>
@@ -159,10 +200,14 @@ export function EmptyState({
   description: string
 }) {
   return (
-    <div className="rounded-2xl border border-dashed bg-white px-6 py-16 text-center text-slate-900">
-      <Search className="mx-auto mb-3 size-8 text-slate-400" />
-      <h2 className="font-semibold">{title}</h2>
-      <p className="mt-1 text-sm text-slate-500">{description}</p>
+    <div className="dashboard-card px-6 py-16 text-center">
+      <span className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+        <Search className="size-6" />
+      </span>
+      <h2 className="font-semibold text-slate-900">{title}</h2>
+      <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+        {description}
+      </p>
     </div>
   )
 }
@@ -183,88 +228,125 @@ export function SearchField({
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full pl-9 sm:w-72"
+        className="dashboard-control w-full pl-9 sm:w-72"
       />
     </div>
   )
 }
 export function PaymentTable({ links }: { links: PaymentLink[] }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border bg-white text-slate-900">
-      <table className="w-full min-w-[700px] text-left text-sm">
-        <thead className="border-b bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          <tr>
-            <th className="px-5 py-4">Invoice</th>
-            <th className="px-5 py-4">Amount</th>
-            <th className="px-5 py-4">Created</th>
-            <th className="px-5 py-4">Status</th>
-            <th className="px-5 py-4">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {links.map((link) => (
-            <tr key={link.id} className="border-b last:border-0">
-              <td className="px-5 py-4 font-medium">
+    <div className="dashboard-card overflow-hidden">
+      <div className="divide-y md:hidden">
+        {links.map((link) => (
+          <div key={link.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <Link
                   to="/dashboard/payment-links/$id"
                   params={{ id: link.id }}
-                  className="hover:text-emerald-700"
+                  className="font-semibold text-slate-900 hover:text-emerald-700"
                 >
                   {link.title}
                 </Link>
-                <span className="block text-xs font-normal text-slate-500">
-                  {link.merchant}
-                </span>
-              </td>
-              <td className="px-5 py-4 font-semibold">{link.amount} BCH</td>
-              <td className="px-5 py-4 text-slate-500">
-                {displayDate(link.createdAt)}
-              </td>
-              <td className="px-5 py-4">
-                <LinkStatus link={link} />
-              </td>
-              <td className="px-5 py-4">
-                <div className="flex items-center gap-3 whitespace-nowrap">
+                <p className="mt-1 text-xs text-slate-500">
+                  {link.merchant} · {displayDate(link.createdAt)}
+                </p>
+              </div>
+              <p className="shrink-0 font-bold text-slate-900">
+                {link.amount} BCH
+              </p>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <LinkStatus link={link} />
+              <Link
+                to="/dashboard/payment-links/$id"
+                params={{ id: link.id }}
+                className="text-sm font-semibold text-emerald-700"
+              >
+                Details →
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto md:block">
+        <table className="dashboard-table w-full min-w-[700px] text-left text-sm">
+          <thead className="border-b bg-[#f8faf9]">
+            <tr>
+              <th className="px-5 py-4">Invoice</th>
+              <th className="px-5 py-4">Amount</th>
+              <th className="px-5 py-4">Created</th>
+              <th className="px-5 py-4">Status</th>
+              <th className="px-5 py-4">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {links.map((link) => (
+              <tr key={link.id} className="border-b last:border-0">
+                <td className="px-5 py-4 font-medium">
                   <Link
                     to="/dashboard/payment-links/$id"
                     params={{ id: link.id }}
-                    className="font-medium text-emerald-700 hover:underline"
+                    className="hover:text-emerald-700"
                   >
-                    Details
+                    {link.title}
                   </Link>
-                  <button
-                    type="button"
-                    className="text-emerald-700 hover:underline"
-                    onClick={() =>
-                      navigator.clipboard
-                        .writeText(checkoutUrl(link))
-                        .then(() => toast.success("Checkout link copied"))
-                        .catch(() => toast.error("Could not copy link"))
-                    }
-                  >
-                    Copy
-                  </button>
-                  <a
-                    href={checkoutUrl(link)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-emerald-700 hover:underline"
-                  >
-                    Preview
-                  </a>
-                  <Link
-                    to="/dashboard/payment-links/$id/qr"
-                    params={{ id: link.id }}
-                    className="text-emerald-700 hover:underline"
-                  >
-                    QR
-                  </Link>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  <span className="block text-xs font-normal text-slate-500">
+                    {link.merchant}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap px-5 py-4 font-semibold">
+                  {link.amount} BCH
+                </td>
+                <td className="px-5 py-4 text-slate-500">
+                  {displayDate(link.createdAt)}
+                </td>
+                <td className="px-5 py-4">
+                  <LinkStatus link={link} />
+                </td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-3 whitespace-nowrap">
+                    <Link
+                      to="/dashboard/payment-links/$id"
+                      params={{ id: link.id }}
+                      className="font-medium text-emerald-700 hover:underline"
+                    >
+                      Details
+                    </Link>
+                    <button
+                      type="button"
+                      className="text-emerald-700 hover:underline"
+                      onClick={() =>
+                        navigator.clipboard
+                          .writeText(checkoutUrl(link))
+                          .then(() => toast.success("Checkout link copied"))
+                          .catch(() => toast.error("Could not copy link"))
+                      }
+                    >
+                      Copy
+                    </button>
+                    <a
+                      href={checkoutUrl(link)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-700 hover:underline"
+                    >
+                      Preview
+                    </a>
+                    <Link
+                      to="/dashboard/payment-links/$id/qr"
+                      params={{ id: link.id }}
+                      className="text-emerald-700 hover:underline"
+                    >
+                      QR
+                    </Link>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

@@ -17,7 +17,7 @@ export const Route = createFileRoute("/_layout/settings")({
   head: () => ({
     meta: [
       {
-        title: "Settings - FastAPI Template",
+        title: "Settings - ProofPay",
       },
     ],
   }),
@@ -34,24 +34,35 @@ function UserSettings() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">User Settings</h1>
-        <p className="text-muted-foreground">
-          Manage your account settings and preferences
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-[.16em] text-emerald-700">
+          Account
+        </p>
+        <h1 className="text-[32px] font-bold tracking-[-.045em]">Settings</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Manage your account and security preferences.
         </p>
       </div>
 
-      <Tabs defaultValue="my-profile">
-        <TabsList>
+      <Tabs defaultValue="my-profile" className="gap-5">
+        <TabsList className="h-auto max-w-full justify-start overflow-x-auto rounded-xl border bg-white p-1.5">
           {finalTabs.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="px-4 py-2 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800"
+            >
               {tab.title}
             </TabsTrigger>
           ))}
         </TabsList>
         {finalTabs.map((tab) => (
-          <TabsContent key={tab.value} value={tab.value}>
+          <TabsContent
+            key={tab.value}
+            value={tab.value}
+            className="dashboard-card min-h-72 p-5 sm:p-7"
+          >
             <tab.component />
           </TabsContent>
         ))}

@@ -12,43 +12,28 @@ export function Logo({
   className?: string
   asLink?: boolean
 }) {
-  const fullLogo = (
-    <span
-      className={cn(
-        "relative block h-10 aspect-[9/2] overflow-hidden rounded-sm bg-[#D1FAE5]",
-        variant === "responsive" && "group-data-[collapsible=icon]:hidden",
-        className,
-      )}
-    >
-      <img
-        src={logoSrc}
-        alt="ProofPay"
-        className="absolute left-0 top-1/2 w-full -translate-y-1/2"
-      />
-    </span>
-  )
-
-  const iconLogo = (
-    <span
-      className={cn(
-        "relative block size-9 shrink-0 overflow-hidden rounded-sm bg-[#D1FAE5]",
-        variant === "responsive" &&
-          "hidden group-data-[collapsible=icon]:block",
-        variant === "icon" && className,
-      )}
-    >
-      <img
-        src={logoSrc}
-        alt="ProofPay"
-        className="absolute -left-[22px] -top-[82px] max-w-none size-[200px]"
-      />
-    </span>
-  )
-
   const content = (
-    <span className="inline-flex items-center">
-      {variant !== "icon" && fullLogo}
-      {variant !== "full" && iconLogo}
+    <span className={cn("inline-flex items-center gap-2.5", className)}>
+      <span
+        className="relative block size-10 shrink-0 overflow-hidden rounded-[10px]"
+        aria-hidden="true"
+      >
+        <img
+          src={logoSrc}
+          alt=""
+          className="absolute left-[-22px] top-[-86px] h-auto w-[210px] max-w-none"
+        />
+      </span>
+      {variant !== "icon" && (
+        <span
+          className={cn(
+            "whitespace-nowrap text-xl font-bold tracking-[-.05em] text-inherit",
+            variant === "responsive" && "group-data-[collapsible=icon]:hidden",
+          )}
+        >
+          Proof<span className="text-[#23c88b]">Pay</span>
+        </span>
+      )}
     </span>
   )
   return asLink ? (

@@ -32,24 +32,28 @@ export function Main({ items }: MainProps) {
   }
 
   return (
-    <SidebarGroup>
+    <SidebarGroup className="px-3 group-data-[collapsible=icon]:px-1">
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
             const isActive =
               currentPath === item.path ||
+              (item.path === "/dashboard" && currentPath === "/") ||
               (item.path !== "/dashboard" &&
                 currentPath.startsWith(`${item.path}/`))
 
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
+                  className="h-11 rounded-[10px] px-3 text-[13px] font-medium text-[#c3d1d6] hover:bg-sidebar-accent hover:text-white focus-visible:ring-sidebar-ring data-[active=true]:bg-sidebar-accent data-[active=true]:text-white"
                   tooltip={item.title}
                   isActive={isActive}
                   asChild
                 >
                   <RouterLink to={item.path} onClick={handleMenuClick}>
-                    <item.icon />
+                    <item.icon
+                      className={isActive ? "text-[#48dba5]" : "text-[#91a6af]"}
+                    />
                     <span>{item.title}</span>
                   </RouterLink>
                 </SidebarMenuButton>

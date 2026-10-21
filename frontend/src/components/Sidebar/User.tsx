@@ -24,17 +24,27 @@ interface UserInfoProps {
   email?: string
 }
 
-function UserInfo({ fullName, email }: UserInfoProps) {
+function UserInfo({
+  fullName,
+  email,
+  inSidebar = false,
+}: UserInfoProps & { inSidebar?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5 w-full min-w-0">
+    <div className="flex w-full min-w-0 items-center gap-2.5">
       <Avatar className="size-8">
-        <AvatarFallback className="bg-zinc-600 text-white">
+        <AvatarFallback className="bg-[#087a55] text-xs font-bold text-white">
           {getInitials(fullName || "User")}
         </AvatarFallback>
       </Avatar>
-      <div className="flex flex-col items-start min-w-0">
-        <p className="text-sm font-medium truncate w-full">{fullName}</p>
-        <p className="text-xs text-muted-foreground truncate w-full">{email}</p>
+      <div className="flex min-w-0 flex-col items-start">
+        <p className="w-full truncate text-sm font-semibold">
+          {fullName || "Account"}
+        </p>
+        <p
+          className={`w-full truncate text-xs ${inSidebar ? "text-[#91a6af]" : "text-muted-foreground"}`}
+        >
+          {email}
+        </p>
       </div>
     </div>
   )
@@ -62,11 +72,15 @@ export function User({ user }: { user: any }) {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="rounded-[10px] px-2 text-white hover:bg-sidebar-accent hover:text-white data-[state=open]:bg-sidebar-accent data-[state=open]:text-white"
               data-testid="user-menu"
             >
-              <UserInfo fullName={user?.full_name} email={user?.email} />
-              <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+              <UserInfo
+                fullName={user?.full_name}
+                email={user?.email}
+                inSidebar
+              />
+              <ChevronsUpDown className="ml-auto size-4 text-[#91a6af]" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

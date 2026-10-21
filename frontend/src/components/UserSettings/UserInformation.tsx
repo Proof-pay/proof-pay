@@ -82,7 +82,10 @@ const UserInformation = () => {
 
   return (
     <div className="max-w-md">
-      <h3 className="text-lg font-semibold py-4">User Information</h3>
+      <h3 className="pb-1 text-lg font-semibold">Profile information</h3>
+      <p className="mb-6 text-sm text-slate-500">
+        Update the details associated with your account.
+      </p>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}

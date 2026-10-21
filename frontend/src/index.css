@@ -42,14 +42,14 @@
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --radius: 0.875rem;
+  --background: #f5f8f8;
+  --foreground: #14252f;
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #047857;
+  --primary: #087a55;
   --primary-foreground: #ffffff;
   --secondary: #d1fae5;
   --secondary-foreground: #065f46;
@@ -58,21 +58,21 @@
   --accent: #d1fae5;
   --accent-foreground: #065f46;
   --destructive: #b91c1c;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #047857;
+  --border: #e3eaed;
+  --input: #dbe5e7;
+  --ring: #0b9a6b;
   --chart-1: #047857;
   --chart-2: #15803d;
   --chart-3: #b45309;
   --chart-4: #64748b;
   --chart-5: #b91c1c;
-  --sidebar: #0f172a;
+  --sidebar: #0e1e28;
   --sidebar-foreground: #f8fafc;
-  --sidebar-primary: #047857;
+  --sidebar-primary: #18b980;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1e293b;
+  --sidebar-accent: #203943;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #334155;
+  --sidebar-border: #29414a;
   --sidebar-ring: #34d399;
 }
 
@@ -100,14 +100,14 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.65 0.10687 182.4689);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: #0e1e28;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #18b980;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #203943;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #29414a;
+  --sidebar-ring: #34d399;
 }
 
 @layer base {
@@ -116,10 +116,29 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family:
+      Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
   button,
   [role="button"] {
     cursor: pointer;
+  }
+}
+
+@layer components {
+  .dashboard-card {
+    @apply rounded-2xl border border-[#e3eaed] bg-white text-slate-900 shadow-[0_3px_18px_rgba(20,45,50,.035)];
+  }
+  .dashboard-control {
+    @apply rounded-lg border border-[#dbe5e7] bg-white shadow-none transition-colors focus-visible:border-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-600/15;
+  }
+  .dashboard-table tbody tr {
+    @apply transition-colors hover:bg-[#f7faf9];
+  }
+  .dashboard-table th {
+    @apply text-[11px] font-semibold uppercase tracking-[.11em] text-slate-500;
   }
 }
 

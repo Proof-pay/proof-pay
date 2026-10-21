@@ -67,7 +67,10 @@ const ChangePassword = () => {
 
   return (
     <div className="max-w-md">
-      <h3 className="text-lg font-semibold py-4">Change Password</h3>
+      <h3 className="pb-1 text-lg font-semibold">Change password</h3>
+      <p className="mb-6 text-sm text-slate-500">
+        Keep your account secure with a strong password.
+      </p>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}

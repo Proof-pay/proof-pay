@@ -1,13 +1,16 @@
 import { Link, useNavigate } from "@tanstack/react-router"
 import {
+  Activity,
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   CircleCheck,
   Clock3,
   ExternalLink,
   Link2,
   Plus,
   Receipt,
+  ScanLine,
   Wallet,
 } from "lucide-react"
 import { useState } from "react"
@@ -41,12 +44,13 @@ import {
   PrintButton,
   QRDisplay,
   SearchField,
+  StatCard,
   StatusBadge,
 } from "./ui"
 
-const card = "rounded-2xl border bg-white p-6 text-slate-900 shadow-sm"
+const card = "dashboard-card p-5 sm:p-6"
 const primaryLink =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+  "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
 
 export function Overview() {
   const links = listLinks()
@@ -57,8 +61,8 @@ export function Overview() {
     <div className="space-y-7">
       <PageHeader
         eyebrow="Merchant workspace"
-        title="Overview"
-        description="Your payment requests at a glance."
+        title="Good to see you again"
+        description="Here’s what’s happening with your payment requests."
         action={
           <Link className={primaryLink} to="/dashboard/payment-links/new">
             <Plus className="size-4" />
@@ -68,55 +72,88 @@ export function Overview() {
       />
       <DemoNotice />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ["Received", "0 BCH", "No verified payments"],
-          [
-            "Pending",
-            `${sumAmounts(active.map((item) => item.amount))} BCH`,
-            `${active.length} requests`,
-          ],
-          ["Active links", String(active.length), "Ready to share"],
-          ["Confirmed payments", "0", "Awaiting live integration"],
-        ].map(([label, value, hint]) => (
-          <div key={label} className={card}>
-            <p className="text-sm text-slate-500">{label}</p>
-            <p className="mt-4 text-3xl font-semibold tracking-tight">
-              {value}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">{hint}</p>
+        <StatCard
+          label="Total received"
+          value="0 BCH"
+          hint="No verified payments"
+          icon={Wallet}
+        />
+        <StatCard
+          label="Pending amount"
+          value={`${sumAmounts(active.map((item) => item.amount))} BCH`}
+          hint={`${active.length} open requests`}
+          icon={Activity}
+          tone="amber"
+        />
+        <StatCard
+          label="Active links"
+          value={String(active.length)}
+          hint="Ready to share"
+          icon={Link2}
+          tone="blue"
+        />
+        <StatCard
+          label="Confirmed"
+          value="0"
+          hint="Verification not connected"
+          icon={CircleCheck}
+          tone="violet"
+        />
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <section className="min-w-0 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">
+                Recent payment requests
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Your latest activity in one place
+              </p>
+            </div>
+            <Link
+              to="/dashboard/payment-links"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-emerald-700 hover:underline"
+            >
+              View all <ArrowUpRight className="size-4" />
+            </Link>
           </div>
-        ))}
-      </div>
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Recent requests</h2>
-        <Link
-          to="/dashboard/payment-links"
-          className="text-sm font-medium text-emerald-700 hover:underline"
-        >
-          View all <ArrowRight className="inline size-4" />
-        </Link>
-      </div>
-      <PaymentTable links={links.slice(0, 5)} />
-      <div
-        className={`${card} flex flex-wrap items-center justify-between gap-4`}
-      >
-        <div>
-          <h2 className="font-semibold">Create a new request</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Create a demo checkout page in a few steps.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            to="/dashboard/transactions"
-            className="inline-flex h-10 items-center rounded-md border px-4 text-sm font-medium"
-          >
-            Browse transactions
-          </Link>
-          <Link to="/dashboard/payment-links/new" className={primaryLink}>
-            Create link <ArrowRight className="size-4" />
-          </Link>
-        </div>
+          <PaymentTable links={links.slice(0, 5)} />
+        </section>
+        <aside className="space-y-4">
+          <div className="rounded-2xl bg-[#112d31] p-6 text-white shadow-[0_12px_32px_rgba(16,49,48,.12)]">
+            <span className="grid size-11 place-items-center rounded-xl bg-white/10">
+              <ScanLine className="size-5 text-emerald-300" />
+            </span>
+            <h2 className="mt-6 text-lg font-bold tracking-tight">
+              Accept BCH, simply.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Create a payment request, then share its checkout page or QR code.
+            </p>
+            <Link
+              to="/dashboard/payment-links/new"
+              className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#21bf85] px-4 text-sm font-semibold text-[#082e25] transition-colors hover:bg-[#55d9a7]"
+            >
+              Create a payment link <ArrowRight className="size-4" />
+            </Link>
+          </div>
+          <div className={`${card} space-y-3`}>
+            <h2 className="font-semibold">Quick access</h2>
+            <Link
+              to="/dashboard/transactions"
+              className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-slate-50"
+            >
+              Transactions <ArrowRight className="size-4 text-slate-400" />
+            </Link>
+            <Link
+              to="/dashboard/receipts"
+              className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-slate-50"
+            >
+              Receipts <ArrowRight className="size-4 text-slate-400" />
+            </Link>
+          </div>
+        </aside>
       </div>
     </div>
   )
@@ -149,7 +186,7 @@ export function LinksPage() {
         }
       />
       <DemoNotice />
-      <div className="flex flex-wrap gap-3">
+      <div className="dashboard-card flex flex-wrap gap-3 p-4">
         <SearchField
           value={search}
           onChange={(value) => {
@@ -160,7 +197,7 @@ export function LinksPage() {
         />
         <select
           aria-label="Filter by status"
-          className="h-9 rounded-md border bg-white px-3 text-sm"
+          className="dashboard-control h-9 px-3 text-sm"
           value={filter}
           onChange={(event) => {
             setFilter(event.target.value)
@@ -237,82 +274,109 @@ export function NewLinkPage() {
     navigate({ to: "/dashboard/payment-links/$id", params: { id: link.id } })
   }
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         eyebrow="Payment links"
         title="Create payment link"
         description="Set the details your customer will see at checkout."
       />
       <DemoNotice />
-      <form onSubmit={submit} className={`${card} space-y-5`}>
-        <Field id="title" label="Title / invoice name" required>
-          <Input
-            id="title"
-            required
-            maxLength={100}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Website design deposit"
-          />
-        </Field>
-        <Field id="amount" label="Amount (BCH)" required>
-          <Input
-            id="amount"
-            required
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.05"
-          />
-        </Field>
-        <Field id="address" label="Recipient BCH address" required>
-          <Input
-            id="address"
-            required
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="bitcoincash:..."
-            autoComplete="off"
-          />
-          <p className="mt-1.5 text-xs text-slate-500">
-            Funds go directly to this Bitcoin Cash address. Check it carefully
-            before sharing.
-          </p>
-        </Field>
-        <Field id="description" label="Description (optional)">
-          <textarea
-            id="description"
-            className="min-h-24 w-full rounded-md border bg-white px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-emerald-700"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={500}
-            placeholder="What is this payment for?"
-          />
-        </Field>
-        <Field id="expiry" label="Expiry (optional)">
-          <Input
-            id="expiry"
-            type="datetime-local"
-            value={expiry}
-            onChange={(e) => setExpiry(e.target.value)}
-          />
-        </Field>
-        {error && (
-          <p role="alert" className="text-sm text-red-700">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end gap-3">
-          <Link
-            to="/dashboard/payment-links"
-            className="inline-flex h-9 items-center rounded-md border px-4 text-sm"
-          >
-            Cancel
-          </Link>
-          <Button type="submit">
-            Create link <ArrowRight />
-          </Button>
+      <form
+        onSubmit={submit}
+        className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]"
+      >
+        <div className={`${card} space-y-5`}>
+          <div className="border-b pb-4">
+            <h2 className="font-semibold">Payment details</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Set up the checkout page your customer will open.
+            </p>
+          </div>
+          <Field id="title" label="Title / invoice name" required>
+            <Input
+              id="title"
+              required
+              maxLength={100}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Website design deposit"
+            />
+          </Field>
+          <Field id="amount" label="Amount (BCH)" required>
+            <Input
+              id="amount"
+              required
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.05"
+            />
+          </Field>
+          <Field id="address" label="Recipient BCH address" required>
+            <Input
+              id="address"
+              required
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="bitcoincash:..."
+              autoComplete="off"
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              Funds go directly to this Bitcoin Cash address. Check it carefully
+              before sharing.
+            </p>
+          </Field>
+          <Field id="description" label="Description (optional)">
+            <textarea
+              id="description"
+              className="dashboard-control min-h-24 w-full px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-emerald-700"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={500}
+              placeholder="What is this payment for?"
+            />
+          </Field>
+          <Field id="expiry" label="Expiry (optional)">
+            <Input
+              id="expiry"
+              type="datetime-local"
+              value={expiry}
+              onChange={(e) => setExpiry(e.target.value)}
+            />
+          </Field>
+          {error && (
+            <p role="alert" className="text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-3 border-t pt-5">
+            <Link
+              to="/dashboard/payment-links"
+              className="inline-flex h-9 items-center rounded-md border px-4 text-sm"
+            >
+              Cancel
+            </Link>
+            <Button type="submit">
+              Create link <ArrowRight />
+            </Button>
+          </div>
         </div>
+        <aside className="space-y-4">
+          <div className={`${card} space-y-3`}>
+            <span className="grid size-11 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+              <Wallet className="size-5" />
+            </span>
+            <h2 className="font-semibold">Direct to your wallet</h2>
+            <p className="text-sm leading-6 text-slate-500">
+              Customers can scan a QR code or open the payment URI in their BCH
+              wallet. Check your address carefully before sharing.
+            </p>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
+            Demo requests are saved in this browser. Payment detection and
+            verification are not connected.
+          </div>
+        </aside>
       </form>
     </div>
   )
@@ -329,7 +393,7 @@ function Field({
   children: React.ReactNode
 }) {
   return (
-    <div className="block space-y-2">
+    <div className="block space-y-2 [&_input]:h-11 [&_input]:rounded-lg [&_input]:border-[#dbe5e7] [&_input]:bg-white">
       <label htmlFor={id} className="block text-sm font-medium">
         {label} {required && <span className="text-red-700">*</span>}
       </label>
@@ -360,11 +424,13 @@ export function LinkDetails({ id }: { id: string }) {
       <DemoNotice />
       <div className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
         <div className={`${card} space-y-6`}>
-          <div className="flex size-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
             <Link2 className="size-7" />
           </div>
           <div>
-            <h1 className="text-3xl font-semibold">Payment link ready</h1>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Payment link ready
+            </h1>
             <p className="mt-2 text-slate-500">
               Share this checkout page with your customer.
             </p>
@@ -389,7 +455,7 @@ export function LinkDetails({ id }: { id: string }) {
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex h-9 items-center gap-2 rounded-md border px-4 text-sm"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border px-4 text-sm font-medium hover:bg-slate-50"
             >
               <ExternalLink className="size-4" />
               Preview checkout
@@ -397,7 +463,7 @@ export function LinkDetails({ id }: { id: string }) {
             <Link
               to="/dashboard/payment-links/$id/qr"
               params={{ id }}
-              className="inline-flex h-9 items-center gap-2 rounded-md border px-4 text-sm"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border px-4 text-sm font-medium hover:bg-slate-50"
             >
               Show QR <ArrowRight className="size-4" />
             </Link>
@@ -434,23 +500,63 @@ export function MerchantQR({ id }: { id: string }) {
       />
     )
   const url = checkoutUrl(link)
+  const uri = paymentUri(link)
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        eyebrow="Payment links"
+        title="Payment QR code"
+        description="Display or share this request with your customer."
+      />
       <DemoNotice />
-      <div className={`${card} space-y-6 text-center`}>
-        <div>
-          <p className="text-sm font-semibold text-emerald-700">
-            {link.merchant}
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className={`${card} space-y-5 text-center`}>
+          <p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-700">
+            Checkout QR
           </p>
-          <h1 className="mt-2 text-2xl font-semibold">{link.title}</h1>
-          <p className="mt-2 text-3xl font-bold">{link.amount} BCH</p>
-        </div>
-        <QRDisplay value={url} label="Scan to open checkout" large />
-        <div className="flex flex-wrap justify-center gap-2">
+          <QRDisplay value={url} label="Scan to open checkout" large />
           <CopyButton value={url} label="Copy checkout URL" />
+          <p className="break-all text-xs text-slate-500">{url}</p>
+        </div>
+        <div className="space-y-5">
+          <div className={card}>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-slate-500">
+              Payment request
+            </p>
+            <h2 className="mt-3 text-xl font-bold">{link.title}</h2>
+            <p className="mt-1 text-sm text-slate-500">{link.merchant}</p>
+            <p className="mt-5 text-[32px] font-bold tracking-tight text-emerald-700">
+              {link.amount} <span className="text-base">BCH</span>
+            </p>
+            <dl className="mt-5">
+              <DetailRow label="Status" value={<LinkStatus link={link} />} />
+              <DetailRow label="Expires" value={displayDate(link.expiresAt)} />
+            </dl>
+            {link.address && (
+              <div className="mt-5">
+                <p className="mb-2 text-xs font-medium text-slate-500">
+                  Recipient address
+                </p>
+                <p className="break-all rounded-lg bg-[#f6f9f8] p-3 font-mono text-xs">
+                  {link.address}
+                </p>
+                <div className="mt-3">
+                  <CopyButton value={link.address} label="Copy address" />
+                </div>
+              </div>
+            )}
+          </div>
+          {uri && (
+            <div className={`${card} space-y-3`}>
+              <h2 className="font-semibold">Pay directly with a BCH wallet</h2>
+              <p className="text-sm text-slate-500">
+                This URI includes the recipient and exact BCH amount.
+              </p>
+              <CopyButton value={uri} label="Copy payment URI" />
+            </div>
+          )}
           <PrintButton />
         </div>
-        <p className="break-all text-xs text-slate-500">{url}</p>
       </div>
     </div>
   )
@@ -473,7 +579,7 @@ export function TransactionsPage() {
         description="Network activity associated with your requests."
       />
       <DemoNotice />
-      <div className="flex flex-wrap gap-3">
+      <div className="dashboard-card flex flex-wrap gap-3 p-4">
         <SearchField
           value={search}
           onChange={setSearch}
@@ -481,7 +587,7 @@ export function TransactionsPage() {
         />
         <select
           aria-label="Filter transactions"
-          className="h-9 rounded-md border bg-white px-3 text-sm"
+          className="dashboard-control h-9 px-3 text-sm"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
@@ -492,9 +598,9 @@ export function TransactionsPage() {
         </select>
       </div>
       {links.some((link) => link.txid) ? (
-        <div className="overflow-x-auto rounded-2xl border bg-white text-slate-900">
-          <table className="w-full min-w-[650px] text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-500">
+        <div className="dashboard-card overflow-x-auto">
+          <table className="dashboard-table w-full min-w-[650px] text-left text-sm">
+            <thead className="border-b bg-[#f8faf9]">
               <tr>
                 <th className="p-4">Date</th>
                 <th className="p-4">Payment</th>
@@ -507,7 +613,7 @@ export function TransactionsPage() {
               {links
                 .filter((link) => link.txid)
                 .map((link) => (
-                  <tr key={link.id} className="border-b">
+                  <tr key={link.id} className="border-b last:border-0">
                     <td className="p-4">{displayDate(link.createdAt)}</td>
                     <td className="p-4">
                       <Link
@@ -592,15 +698,17 @@ export function ReceiptsPage() {
         description="Share proof when a payment has been verified."
       />
       <DemoNotice />
-      <SearchField
-        value={search}
-        onChange={setSearch}
-        placeholder="Search receipts"
-      />
+      <div className="dashboard-card p-4">
+        <SearchField
+          value={search}
+          onChange={setSearch}
+          placeholder="Search receipts"
+        />
+      </div>
       {receipts.length ? (
-        <div className="overflow-x-auto rounded-2xl border bg-white text-slate-900">
-          <table className="w-full min-w-[650px] text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-500">
+        <div className="dashboard-card overflow-x-auto">
+          <table className="dashboard-table w-full min-w-[650px] text-left text-sm">
+            <thead className="border-b bg-[#f8faf9]">
               <tr>
                 <th className="p-4">Receipt ID</th>
                 <th className="p-4">Invoice</th>
@@ -612,7 +720,7 @@ export function ReceiptsPage() {
             </thead>
             <tbody>
               {receipts.map((link) => (
-                <tr key={link.id} className="border-b">
+                <tr key={link.id} className="border-b last:border-0">
                   <td className="p-4 font-medium">{link.receiptId}</td>
                   <td className="p-4">{link.title}</td>
                   <td className="p-4">{link.amount} BCH</td>
@@ -651,16 +759,16 @@ export function ReceiptsPage() {
 }
 function PublicShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:py-14">
+    <div className="min-h-screen bg-[#f5f8f8] px-4 py-8 text-slate-900 sm:py-14">
       <div className="mx-auto max-w-xl">
         <Link
           to="/"
-          className="mb-8 inline-flex items-center gap-2 text-xl font-bold text-emerald-800"
+          className="mb-8 inline-flex items-center gap-2 text-xl font-bold tracking-tight text-[#14252f]"
         >
           <span className="grid size-9 place-items-center rounded-xl bg-emerald-700 text-white">
-            P
+            <CircleCheck className="size-5" />
           </span>{" "}
-          ProofPay
+          Proof<span className="text-emerald-700">Pay</span>
         </Link>
         {children}
         <p className="mt-8 text-center text-xs text-slate-500">
