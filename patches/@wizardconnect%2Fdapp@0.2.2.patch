@@ -1,0 +1,107 @@
+diff --git a/dist/dapp-connection-manager.js b/dist/dapp-connection-manager.js
+index 1c2c682e0c6bfd95b10bf39e314298678c16740a..e8adcc5682093e566c2bc5a1410aa6b93b642076 100644
+--- a/dist/dapp-connection-manager.js
++++ b/dist/dapp-connection-manager.js
+@@ -22,6 +22,8 @@ export class DappConnectionManager extends EventEmitter {
+     dappIcon;
+     conn = null;
+     listenerAttached = false;
++    messageListener = (msg) => this.handleMessage(msg);
++    detachRelayEvents = null;
+     /** Pubkey state — exposed for callers that need to query by index. */
+     pubkeyState;
+     walletName = null;
+@@ -88,11 +90,13 @@ export class DappConnectionManager extends EventEmitter {
+             privateKey: relay.credentials.privateKey,
+             secret: relay.credentials.secret,
+         }, this.sessionOptions.storage);
+-        relay.events.on("keyexchangecomplete", (walletPublicKey) => {
++        const onKeyExchange = (walletPublicKey) => {
+             if (!this.sessionOptions)
+                 return;
+             saveSession(this.sessionOptions.key, { walletPublicKey: binToHex(walletPublicKey) }, this.sessionOptions.storage);
+-        });
++        };
++        relay.events.on("keyexchangecomplete", onKeyExchange);
++        this.detachRelayEvents = () => relay.events.off("keyexchangecomplete", onKeyExchange);
+     }
+     /**
+      * Load the stored session (e.g. for reconnection).
+@@ -123,7 +127,7 @@ export class DappConnectionManager extends EventEmitter {
+             // Attach message listener once (same RelayClient object is reused across reconnects)
+             if (!this.listenerAttached) {
+                 this.listenerAttached = true;
+-                client.on("message", (msg) => this.handleMessage(msg));
++                client.on("message", this.messageListener);
+             }
+             this.conn = client;
+         }
+@@ -309,7 +313,7 @@ export class DappConnectionManager extends EventEmitter {
+             if (!this.conn)
+                 return;
+             await this.pushDappReady();
+-        })().catch((e) => console.error("[wizardconnect/dapp] Error in onConnected:", e));
++        })().catch(() => console.error("[wizardconnect/dapp] Connection handshake failed"));
+     }
+     startPingInterval() {
+         this.stopPingInterval();
+@@ -339,6 +343,11 @@ export class DappConnectionManager extends EventEmitter {
+         }
+     }
+     destroy() {
++        this.conn?.off("message", this.messageListener);
++        this.conn = null;
++        this.detachRelayEvents?.();
++        this.detachRelayEvents = null;
++        this.removeAllListeners();
+         this.stopPingInterval();
+         if (this.disconnectGraceTimer !== null) {
+             clearTimeout(this.disconnectGraceTimer);
+@@ -370,7 +379,7 @@ export class DappConnectionManager extends EventEmitter {
+         this.emit("messagereceived", msg);
+         switch (msg.action) {
+             case RelayMsgAction.WalletReady:
+-                this.handleWalletReady(msg).catch((e) => console.error("[wizardconnect/dapp] Error handling wallet_ready:", e));
++                this.handleWalletReady(msg).catch(() => console.error("[wizardconnect/dapp] Wallet handshake failed"));
+                 break;
+             case RelayMsgAction.SignTransactionResponse:
+                 this.handleSignTransactionResponse(msg);
+@@ -405,6 +414,9 @@ export class DappConnectionManager extends EventEmitter {
+         }, 8_000);
+     }
+     async handleWalletReady(msg) {
++        // The relay validates the pairing secret before setting its paired key.
++        // A rejected initial wallet_ready still reaches EventEmitter listeners.
++        if (!this.conn?.isKeyExchangeComplete()) return;
+         if (this.disconnectGraceTimer !== null) {
+             clearTimeout(this.disconnectGraceTimer);
+             this.disconnectGraceTimer = null;
+@@ -434,7 +446,7 @@ export class DappConnectionManager extends EventEmitter {
+         // Extract and validate protocol-specific session data
+         const sessionData = msg.session[agreed];
+         if (!isHdwalletv1Session(sessionData)) {
+-            console.error("[wizardconnect/dapp] Invalid hdwalletv1 session data:", sessionData);
++            console.error("[wizardconnect/dapp] Invalid wallet session");
+             return;
+         }
+         // Transport-level capability: if the wallet advertises chunking, enable
+@@ -450,7 +462,7 @@ export class DappConnectionManager extends EventEmitter {
+         for (const pathInfo of sessionData.paths) {
+             const decoded = decodeHdPublicKey(pathInfo.xpub);
+             if (typeof decoded === "string") {
+-                console.warn("[wizardconnect/dapp] Bad xpub for path", pathInfo.name, decoded);
++                console.warn("[wizardconnect/dapp] Invalid wallet public path");
+                 continue;
+             }
+             const ci = childIndexOfPathName(pathInfo.name);
+@@ -461,8 +473,9 @@ export class DappConnectionManager extends EventEmitter {
+         // Send dapp_ready first so the wallet's session state is confirmed before
+         // any sign requests arrive — await ensures correct ordering on the wire.
+         if (!msg.dapp_discovered) {
+-            await this.pushDappReady().catch((e) => console.error("[wizardconnect/dapp] Error pushing dapp_ready:", e));
++            await this.pushDappReady().catch(() => console.error("[wizardconnect/dapp] Dapp handshake failed"));
+         }
++        if (!this.conn) return;
+         this.emit("walletready", msg);
+         // Re-send any pending sign requests with a fresh timestamp so the wallet
+         // doesn't filter them as already-processed (the wallet timestamps messages

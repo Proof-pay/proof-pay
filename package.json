@@ -13,5 +13,14 @@
     "migrate:reset": "cd backend && uv run alembic downgrade base",
     "email:dev": "bun run --filter emails dev",
     "email:export": "bun run --filter emails export"
+  },
+  "dependencies": {
+    "@wizardconnect/core": "^0.2.5",
+    "@wizardconnect/dapp": "^0.2.2",
+    "@wizardconnect/react": "^0.2.3"
+  },
+  "patchedDependencies": {
+    "@wizardconnect/react@0.2.3": "patches/@wizardconnect%2Freact@0.2.3.patch",
+    "@wizardconnect/dapp@0.2.2": "patches/@wizardconnect%2Fdapp@0.2.2.patch"
   }
 }

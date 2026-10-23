@@ -1,0 +1,117 @@
+diff --git a/node_modules/@wizardconnect/react/.bun-tag-ad1760ae05e8679e b/.bun-tag-ad1760ae05e8679e
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/hooks/useWizardConnect.js b/dist/hooks/useWizardConnect.js
+index 949fd1ca28017de407682f53a5e91770d11e4143..ee789e375ea0d04a5223eb09589be0c59bcdb765 100644
+--- a/dist/hooks/useWizardConnect.js
++++ b/dist/hooks/useWizardConnect.js
+@@ -26,7 +26,7 @@ export function useWizardConnect(options = {}) {
+     const managerRef = useRef(null);
+     const autoReconnectAttempted = useRef(false);
+     const startRelay = useCallback((existingCredentials) => {
+-        if (state === "connecting" || state === "connected")
++        if (relayRef.current || managerRef.current)
+             return false;
+         setError(null);
+         setState("connecting");
+@@ -36,24 +36,34 @@ export function useWizardConnect(options = {}) {
+         managerRef.current = mgr;
+         setManager(mgr);
+         mgr.on("walletready", () => {
++            if (managerRef.current !== mgr) return;
+             setWalletName(mgr.walletName);
+             setWalletIcon(mgr.walletIcon);
+             setState("connected");
+         });
+         mgr.on("reconnecting", () => {
++            if (managerRef.current !== mgr) return;
+             setState("reconnecting");
+         });
+         mgr.on("disconnect", () => {
++            if (managerRef.current !== mgr) return;
+             setState("disconnected");
+             setWalletName(null);
+             setWalletIcon(null);
+             mgr.clearStoredSession();
+             relayRef.current?.cleanup();
+             relayRef.current = null;
++            mgr.destroy();
++            managerRef.current = null;
++            setManager(null);
++            setUri(null);
++            setQrUri(null);
+         });
+         try {
+             const relay = initiateDappRelay((payload) => {
+-                mgr.updateConnection(payload.client, payload.status);
++                if (managerRef.current === mgr) {
++                    mgr.updateConnection(payload.client, payload.status);
++                }
+             }, {
+                 existingCredentials,
+                 explicitRelayUrls: relayUrls,
+@@ -68,8 +78,15 @@ export function useWizardConnect(options = {}) {
+             return true;
+         }
+         catch (e) {
+-            const message = e instanceof Error ? e.message : "Failed to start relay";
+-            setError(message);
++            relayRef.current?.cleanup();
++            relayRef.current = null;
++            mgr.clearStoredSession();
++            mgr.destroy();
++            managerRef.current = null;
++            setManager(null);
++            setUri(null);
++            setQrUri(null);
++            setError("Could not start the wallet connection.");
+             setState("idle");
+             return false;
+         }
+@@ -78,22 +95,31 @@ export function useWizardConnect(options = {}) {
+         return startRelay();
+     }, [startRelay]);
+     const disconnect = useCallback(async () => {
++        const mgr = managerRef.current;
++        const relay = relayRef.current;
++        managerRef.current = null;
++        relayRef.current = null;
++        // Bound the courtesy message: an offline relay queues it indefinitely.
++        const courtesy = mgr?.sendDisconnect().catch(() => {});
++        mgr?.clearStoredSession();
++        mgr?.destroy();
++        let timeout;
+         try {
+-            if (managerRef.current) {
+-                await managerRef.current.sendDisconnect().catch(() => { });
+-            }
++            await Promise.race([
++                courtesy,
++                new Promise(resolve => { timeout = setTimeout(resolve, 500); }),
++            ]);
+         }
+         finally {
+-            relayRef.current?.cleanup();
+-            relayRef.current = null;
+-            managerRef.current?.clearStoredSession();
+-            managerRef.current = null;
++            clearTimeout(timeout);
++            relay?.cleanup();
+             setManager(null);
+             setUri(null);
+             setQrUri(null);
+             setWalletName(null);
+             setWalletIcon(null);
+             setState("idle");
++            setError(null);
+         }
+     }, []);
+     // Auto-reconnect on mount if a stored session exists
+@@ -131,6 +157,7 @@ export function useWizardConnect(options = {}) {
+     useEffect(() => {
+         return () => {
+             managerRef.current?.destroy();
++            managerRef.current = null;
+             relayRef.current?.cleanup();
+             relayRef.current = null;
+             autoReconnectAttempted.current = false;

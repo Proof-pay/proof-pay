@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "generate-client": "openapi-ts",
     "test": "bunx playwright test",
-    "test:ui": "bunx playwright test --ui"
+    "test:ui": "bunx playwright test --ui",
+    "test:wallet": "bunx playwright test --config playwright.wallet.config.ts",
+    "test:wallet-sdk": "bun test tests/wallet/sdk.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -32,6 +34,9 @@
     "@tanstack/react-router": "^1.170.39",
     "@tanstack/react-router-devtools": "^1.167.2",
     "@tanstack/react-table": "^9.2.4",
+    "@wizardconnect/core": "0.2.5",
+    "@wizardconnect/dapp": "0.2.2",
+    "@wizardconnect/react": "0.2.3",
     "axios": "1.20.0",
     "cashaddrjs": "^0.4.4",
     "class-variance-authority": "^0.7.1",
