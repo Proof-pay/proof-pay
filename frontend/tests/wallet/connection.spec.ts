@@ -1,5 +1,8 @@
 import { expect, type Page, test } from "@playwright/test"
-import { DEFAULT_RELAY_URLS, generateKeyExchangeCredentials } from "@wizardconnect/core"
+import {
+  DEFAULT_RELAY_URLS,
+  generateKeyExchangeCredentials,
+} from "@wizardconnect/core"
 
 const sessionKey = "proofpay-wizardconnect-session"
 

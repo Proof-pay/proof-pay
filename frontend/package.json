@@ -12,7 +12,7 @@
     "test": "bunx playwright test",
     "test:ui": "bunx playwright test --ui",
     "test:wallet": "bunx playwright test --config playwright.wallet.config.ts",
-    "test:wallet-sdk": "bun test tests/wallet/sdk.test.ts"
+    "test:wallet-sdk": "bun test sdk-tests/wizardconnect.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
