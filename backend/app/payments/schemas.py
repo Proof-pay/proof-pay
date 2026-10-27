@@ -22,7 +22,7 @@ class MerchantSettings(BaseModel):
     contact_email: EmailStr | None = None
     contact_phone: str | None = Field(default=None, max_length=50)
     receiving_address: str | None = None
-    network: Literal["mainnet", "testnet", "regtest"]
+    network: Literal["mainnet", "testnet", "chipnet", "regtest"]
     default_expiry_hours: int = Field(ge=1, le=24 * 90)
     required_confirmations: int = Field(ge=1, le=100)
 
@@ -175,6 +175,10 @@ class InvoiceView(BaseModel):
 
 
 class PublicCheckout(BaseModel):
+    amount_due_bch: str
+    required_confirmations: int
+    late_amount_sats: int
+    overpaid_amount_sats: int
     merchant_name: str
     title: str
     description: str | None
@@ -194,7 +198,21 @@ class PublicCheckout(BaseModel):
     verification_stale: bool
 
 
+class PublicPayment(BaseModel):
+    network: str
+    txid: str
+    vout: int
+    amount_sats: int
+    confirmations: int
+    status: str
+    is_late: bool
+    last_checked_at: datetime
+
+
 class PublicReceipt(BaseModel):
+    requested_amount_sats: int
+    receiving_address: str
+    payments: list[PublicPayment]
     reference: str
     invoice_reference: str
     merchant_name: str

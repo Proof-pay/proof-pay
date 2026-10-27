@@ -20,7 +20,13 @@ from app.payments.chain import (
     normalize_address,
     sats_to_bch,
 )
-from app.payments.schemas import InvoiceView, PaymentView, PublicCheckout, ReceiptView
+from app.payments.schemas import (
+    InvoiceView,
+    PaymentView,
+    PublicCheckout,
+    PublicPayment,
+    ReceiptView,
+)
 
 TXID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -147,13 +153,18 @@ def refresh_state(session: Session, invoice: Invoice) -> None:
     session.add(invoice)
 
 
-def payment_uri(invoice: Invoice) -> str | None:
+def payment_uri(invoice: Invoice, received_sats: int = 0) -> str | None:
     if (
-        invoice.status in ("draft", "expired", "cancelled")
+        invoice.status in ("draft", "expired", "cancelled", "confirmed")
         or aware(invoice.expires_at) <= now()
     ):
         return None
-    return f"{invoice.receiving_address}?amount={sats_to_bch(invoice.expected_amount_sats)}"
+    remaining = max(0, invoice.expected_amount_sats - received_sats)
+    return (
+        f"{invoice.receiving_address}?amount={sats_to_bch(remaining)}"
+        if remaining
+        else None
+    )
 
 
 def checkout_url(token: str) -> str:
@@ -162,6 +173,14 @@ def checkout_url(token: str) -> str:
 
 def receipt_url(token: str) -> str:
     return f"{(settings.PUBLIC_CHECKOUT_BASE_URL or settings.FRONTEND_HOST).rstrip('/')}/r/{token}"
+
+
+def scan_stale(invoice: Invoice) -> bool:
+    return invoice.last_scanned_at is None or aware(
+        invoice.last_scanned_at
+    ) < now() - timedelta(
+        seconds=max(120, settings.BCH_RECONCILIATION_INTERVAL_SECONDS * 3)
+    )
 
 
 def stale(payments: list[PaymentOutput]) -> bool:
@@ -234,9 +253,9 @@ def invoice_view_loaded(
         fiat_currency=invoice.fiat_currency,
         public_token=invoice.public_token,
         checkout_url=checkout_url(invoice.public_token),
-        payment_uri=payment_uri(invoice),
+        payment_uri=payment_uri(invoice, total),
         receipt_token=receipt.public_token if receipt else None,
-        verification_stale=stale(payments),
+        verification_stale=stale(payments) or scan_stale(invoice),
         payments=[
             PaymentView.model_validate(p, from_attributes=True) for p in payments
         ],
@@ -250,7 +269,7 @@ def public_view(session: Session, invoice: Invoice) -> PublicCheckout:
     receipt = session.exec(
         select(Receipt).where(Receipt.invoice_id == invoice.id)
     ).first()
-    uri = payment_uri(invoice)
+    uri = payment_uri(invoice, total)
     status = (
         "expired"
         if invoice.status == "pending" and aware(invoice.expires_at) <= now()
@@ -270,10 +289,16 @@ def public_view(session: Session, invoice: Invoice) -> PublicCheckout:
         payment_status=invoice.payment_status,
         payment_uri=uri,
         qr_payload=uri,
+        amount_due_bch=sats_to_bch(max(0, invoice.expected_amount_sats - total)),
+        required_confirmations=invoice.required_confirmations,
+        late_amount_sats=sum(
+            p.amount_sats for p in payments if p.is_late and p.status != "orphaned"
+        ),
+        overpaid_amount_sats=max(0, total - invoice.expected_amount_sats),
         received_amount_sats=total,
         confirmed_amount_sats=confirmed,
         receipt_url=receipt_url(receipt.public_token) if receipt else None,
-        verification_stale=stale(payments),
+        verification_stale=stale(payments) or scan_stale(invoice),
     )
 
 
@@ -297,7 +322,15 @@ def receipt_view(
         required_confirmations=receipt.required_confirmations,
         output_refs=json.loads(receipt.output_refs),
         issued_at=receipt.issued_at,
-        verified_at=receipt.issued_at,
+        verified_at=min(
+            (p.last_checked_at for p in payments or []), default=receipt.issued_at
+        ),
+        requested_amount_sats=invoice.expected_amount_sats if invoice else 0,
+        receiving_address=invoice.receiving_address if invoice else "",
+        payments=[
+            PublicPayment.model_validate(p, from_attributes=True)
+            for p in payments or []
+        ],
         public_token=receipt.public_token,
         verification_url=receipt_url(receipt.public_token),
         current_status=invoice.payment_status if invoice else "unavailable",

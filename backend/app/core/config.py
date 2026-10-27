@@ -21,11 +21,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str
+    SECRET_KEY: str = Field(min_length=32)
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     FRONTEND_HOST: str = "http://localhost:5173"
-    FASTAPI_ENV: Literal["development"] | None = None
+    FASTAPI_ENV: Literal["development", "production"] | None = None
 
     PROJECT_NAME: str
     SENTRY_DSN: HttpUrl | None = None
@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
-    BCH_NETWORK: Literal["mainnet", "testnet", "regtest"] = "mainnet"
+    BCH_NETWORK: Literal["mainnet", "testnet", "chipnet", "regtest"] = "mainnet"
     BCH_RPC_URL: str | None = None
     BCH_RPC_USER: str | None = None
     BCH_RPC_PASSWORD: str | None = None

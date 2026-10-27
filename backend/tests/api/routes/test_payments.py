@@ -37,6 +37,10 @@ class FakeProvider:
         self.transactions = {}
         self.failure = False
 
+    def watch_address(self, address, network):
+        if self.failure:
+            raise ProviderError("unavailable")
+
     def transaction(self, txid, network):
         if self.failure:
             raise ProviderError("unavailable")
@@ -197,7 +201,17 @@ def test_delete_only_unpublished_owned_drafts(context):
     assert client.delete(path, headers=headers[0]).status_code == 204
     assert client.get(path, headers=headers[0]).status_code == 404
 
-    issued = create_invoice(client, headers[0], reference="DELETE-2").json()
+    assert create_invoice(client, headers[0], reference="DELETE-2").status_code == 409
+    issued = client.post(
+        "/api/v1/payment-requests",
+        headers=headers[0],
+        json={
+            "order_reference": "DELETE-2",
+            "title": "Fresh",
+            "amount_bch": "1",
+            "receiving_address": "bitcoincash:qr95sy3j9xwd2ap32xkykttr4cvcu7as4y0qverfuy",
+        },
+    ).json()
     issued_path = f"/api/v1/payment-requests/{issued['id']}"
     assert client.post(f"{issued_path}/issue", headers=headers[0]).status_code == 200
     assert client.delete(issued_path, headers=headers[0]).status_code == 409
@@ -358,16 +372,8 @@ def test_partial_excess_duplicate_confirmation_loss_and_dashboard(context):
         client.get(f"/api/v1/public/receipts/{receipt_token}").json()["current_status"]
         == "detected"
     )
-    other = create_invoice(client, headers[1], reference="INV-OTHER").json()
-    client.post(f"/api/v1/payment-requests/{other['id']}/issue", headers=headers[1])
-    assert (
-        client.post(
-            f"/api/v1/payment-requests/{other['id']}/claims/{TX1}",
-            headers=headers[1],
-            json={"vouts": [0]},
-        ).status_code
-        == 409
-    )
+    # A second invoice cannot reserve the same destination, even for another merchant.
+    assert create_invoice(client, headers[1], reference="INV-OTHER").status_code == 409
 
 
 def test_late_payment_and_provider_failure(context):
@@ -395,3 +401,186 @@ def test_late_payment_and_provider_failure(context):
         assert late.json()["payments"][0]["is_late"] is True
     finally:
         service.now = original_now
+
+
+def test_discovery_restart_reorg_outage_and_public_privacy(context, monkeypatch):
+    from sqlmodel import select
+
+    from app.models import Invoice, PaymentOutput
+    from app.payments import reconcile, worker
+    from app.payments.chain import TransactionNotFound
+
+    client, headers, fake = context
+    # The same engine used by the API override, never the configured live database.
+    with next(app.dependency_overrides[get_db]()) as session:
+        test_engine = session.get_bind()
+    monkeypatch.setattr(worker, "engine", test_engine)
+    monkeypatch.setattr(reconcile, "engine", test_engine)
+    monkeypatch.setattr(worker, "BCHNodeProvider", lambda: fake)
+    monkeypatch.setattr(reconcile, "BCHNodeProvider", lambda: fake)
+    fake.incoming = lambda address, network: (
+        list(fake.transactions)
+        if not fake.failure
+        else (_ for _ in ()).throw(ProviderError("offline"))
+    )
+
+    draft = create_invoice(client, headers[0], amount="1").json()
+    path = f"/api/v1/payment-requests/{draft['id']}"
+    assert client.post(path + "/issue", headers=headers[0]).status_code == 200
+    public_path = f"/api/v1/public/payment-requests/{draft['public_token']}"
+    fake.set(TX1, ["0.4"], 0)
+    assert worker.discover() == (1, 0)
+    checkout = client.get(public_path).json()
+    assert checkout["payment_status"] == "partial"
+    assert checkout["amount_due_bch"] == "0.6"
+    assert checkout["payment_uri"].endswith("amount=0.6")
+    fake.set(TX2, ["0.8"], 1)
+    fake.set(TX1, ["0.4"], 1)
+    # Separate sessions/cycles recover the durable request and do not credit twice.
+    assert worker.discover() == (1, 0)
+    assert worker.discover() == (1, 0)
+    checkout = client.get(public_path).json()
+    assert checkout["payment_status"] == "confirmed"
+    assert checkout["overpaid_amount_sats"] == 20_000_000
+    assert checkout["payment_uri"] is None
+    token = checkout["receipt_url"].split("/")[-1]
+    receipt = client.get(f"/api/v1/public/receipts/{token}").json()
+    assert receipt["requested_amount_sats"] == 100_000_000
+    assert all("invoice_id" not in p and "id" not in p for p in receipt["payments"])
+    fake.failure = True
+    assert worker.discover() == (0, 1)
+    assert client.get(public_path).json()["payment_status"] == "confirmed"
+    fake.failure = False
+    original_transaction = fake.transaction
+
+    def missing(txid, network):
+        if txid == TX2:
+            raise TransactionNotFound("removed")
+        return original_transaction(txid, network)
+
+    fake.transaction = missing
+    assert reconcile.run_once()[0] == 2
+    assert (
+        client.get(f"/api/v1/public/receipts/{token}").json()["current_status"]
+        == "partial"
+    )
+    with Session(test_engine) as session:
+        assert len(session.exec(select(PaymentOutput)).all()) == 2
+        invoice = session.exec(select(Invoice)).one()
+        invoice.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.add(invoice)
+        session.commit()
+    fake.transaction = original_transaction
+    fake.set(TX3, ["0.1"], 1)
+    assert worker.discover() == (1, 0)
+    assert client.get(public_path).json()["late_amount_sats"] == 10_000_000
+    exported = client.get("/api/v1/payments/export.csv", headers=headers[0])
+    assert exported.status_code == 200
+    assert TX3 in exported.text and "amount_sats" in exported.text
+    assert TX3 not in client.get("/api/v1/payments/export.csv", headers=headers[1]).text
+
+
+def test_issue_provider_failure_never_publishes(context):
+    client, headers, fake = context
+    draft = create_invoice(client, headers[0]).json()
+    fake.failure = True
+    assert (
+        client.post(
+            f"/api/v1/payment-requests/{draft['id']}/issue", headers=headers[0]
+        ).status_code
+        == 503
+    )
+    assert (
+        client.get(
+            f"/api/v1/public/payment-requests/{draft['public_token']}"
+        ).status_code
+        == 404
+    )
+
+
+def test_chipnet_network_is_not_testnet(monkeypatch):
+    from app.payments.chain import PREFIXES
+
+    provider = BCHNodeProvider(url="http://unused")
+    monkeypatch.setattr(provider, "_call", lambda *args: {"chain": "test"})
+    with pytest.raises(ProviderError, match="network mismatch"):
+        provider.check_network("chipnet")
+    monkeypatch.setattr(provider, "_call", lambda *args: {"chain": "chip"})
+    provider.check_network("chipnet")
+    assert PREFIXES["chipnet"] == "bchtest"
+
+
+def test_node_watch_only_adapter_and_rpc_not_found(monkeypatch):
+    import httpx
+
+    from app.payments.chain import TransactionNotFound
+
+    provider = BCHNodeProvider(url="http://unused")
+    calls = []
+
+    def rpc(method, params=None):
+        calls.append((method, params))
+        return {
+            "getblockchaininfo": {"chain": "main", "initialblockdownload": False},
+            "getwalletinfo": {"private_keys_enabled": False, "scanning": False},
+            "importaddress": None,
+            "getaddressinfo": {"iswatchonly": True},
+            "listreceivedbyaddress": [{"txids": [TX1, TX1, TX2]}],
+        }[method]
+
+    monkeypatch.setattr(provider, "_call", rpc)
+    provider.watch_address(ADDRESS, "mainnet")
+    assert ("importaddress", [ADDRESS, "proofpay", False]) in calls
+    assert provider.incoming(ADDRESS, "mainnet") == [TX1, TX2]
+    assert calls[-1] == ("listreceivedbyaddress", [0, False, True, ADDRESS])
+    monkeypatch.setattr(provider, "_call", lambda *args: {"private_keys_enabled": True})
+    with pytest.raises(ProviderError, match="watch-only"):
+        provider.check_watch_wallet()
+
+    # BCHN reports missing transactions as JSON-RPC errors with HTTP 500.
+    class RpcClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, *args, **kwargs):
+            return httpx.Response(
+                500,
+                json={"error": {"code": -5, "message": "not found"}, "result": None},
+            )
+
+    monkeypatch.setattr(httpx, "Client", RpcClient)
+    with pytest.raises(TransactionNotFound):
+        BCHNodeProvider(url="http://unused")._call("getrawtransaction", [TX1, 1])
+
+
+def test_token_aware_alias_cannot_reuse_destination(context):
+    client, headers, _ = context
+    # Vector checked against installed libauth 3.1.0-next.8 encodeCashAddress.
+    token_alias = "bitcoincash:zpm2qsznhks23z7629mms6s4cwef74vcwvrqekrq9w"
+    assert normalize_address(token_alias, "mainnet") == ADDRESS
+    assert address_script_hex(token_alias, "mainnet") == address_script_hex(
+        ADDRESS, "mainnet"
+    )
+    assert create_invoice(client, headers[0]).status_code == 201
+    response = client.post(
+        "/api/v1/payment-requests",
+        headers=headers[1],
+        json={
+            "title": "Alias",
+            "order_reference": "ALIAS",
+            "amount_bch": "1",
+            "receiving_address": token_alias,
+        },
+    )
+    assert response.status_code == 409
+
+
+def test_cashonize_token_aware_p2sh32_script():
+    address = "bchtest:rvqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszxv0zfkpe"
+    assert address_script_hex(address, "chipnet") == "aa20" + "01" * 32 + "87"

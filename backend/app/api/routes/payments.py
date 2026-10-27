@@ -1,20 +1,29 @@
 """Merchant payment API and token-scoped public views."""
 
+import csv
 import hashlib
+import io
 import json
 import uuid
+from collections.abc import Iterator
 from datetime import timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import AwareDatetime
 from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models import Invoice, Merchant, PaymentOutput, Receipt
-from app.payments.chain import BCHNodeProvider, bch_to_sats, normalize_address
+from app.models import AddressReservation, Invoice, Merchant, PaymentOutput, Receipt
+from app.payments.chain import (
+    BCHNodeProvider,
+    ProviderError,
+    bch_to_sats,
+    normalize_address,
+)
 from app.payments.schemas import (
     ClaimInput,
     DashboardSummary,
@@ -143,6 +152,11 @@ def create_request(
         idempotency_hash=digest if idempotency_key else None,
     )
     session.add(invoice)
+    session.add(
+        AddressReservation(
+            network=invoice.network, address=address, invoice_id=invoice.id
+        )
+    )
     try:
         session.commit()
     except IntegrityError as exc:
@@ -156,7 +170,10 @@ def create_request(
             ).first()
             if prior and prior.idempotency_hash == digest:
                 return invoice_view(session, prior)
-        raise HTTPException(409, "Duplicate reference or idempotency key") from exc
+        raise HTTPException(
+            409,
+            "This destination is already reserved. Generate a fresh receiving address in your wallet.",
+        ) from exc
     session.refresh(invoice)
     return invoice_view(session, invoice)
 
@@ -246,6 +263,17 @@ def update_request(
         data["expires_at"] is None or aware(data["expires_at"]) <= now()
     ):
         raise HTTPException(422, "Expiry must be in the future")
+    if (
+        "receiving_address" in data
+        and data["receiving_address"] != invoice.receiving_address
+    ):
+        session.add(
+            AddressReservation(
+                network=invoice.network,
+                address=data["receiving_address"],
+                invoice_id=invoice.id,
+            )
+        )
     for key, value in data.items():
         setattr(invoice, key, value)
     if bool(invoice.fiat_reference_amount) != bool(invoice.fiat_currency):
@@ -265,6 +293,25 @@ def issue_request(
     invoice = owned_invoice(session, _merchant(session, user), invoice_id, lock=True)
     if invoice.status != "draft" or aware(invoice.expires_at) <= now():
         raise HTTPException(409, "Request cannot be issued")
+    reservation = session.exec(
+        select(AddressReservation).where(
+            AddressReservation.network == invoice.network,
+            AddressReservation.address == invoice.receiving_address,
+        )
+    ).first()
+    if not reservation or reservation.invoice_id != invoice.id:
+        raise HTTPException(
+            409,
+            "This legacy destination is shared. Choose a fresh receiving address before issuing.",
+        )
+    try:
+        BCHNodeProvider().watch_address(invoice.receiving_address, invoice.network)
+    except ProviderError as exc:
+        raise HTTPException(
+            503,
+            "Cannot monitor this destination. Check the BCH node watch-only wallet configuration.",
+        ) from exc
+    invoice.watched_at = now()
     invoice.status = "pending"
     invoice.issued_at = now()
     invoice.updated_at = now()
@@ -379,6 +426,71 @@ def list_payments(
         "data": [PaymentView.model_validate(p, from_attributes=True) for p in payments],
         "count": count,
     }
+
+
+@router.get("/payments/export.csv")
+def export_payments(session: SessionDep, user: CurrentUser) -> StreamingResponse:
+
+    merchant = _merchant(session, user)
+    cutoff = now()
+
+    def rows() -> Iterator[str]:
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(
+            [
+                "network",
+                "txid",
+                "vout",
+                "amount_sats",
+                "confirmations",
+                "status",
+                "late",
+                "first_seen_at",
+            ]
+        )
+        yield buffer.getvalue()
+        offset = 0
+        while True:
+            payments = session.exec(
+                select(PaymentOutput)
+                .join(Invoice)
+                .where(
+                    Invoice.merchant_id == merchant.id,
+                    PaymentOutput.first_seen_at <= cutoff,
+                )
+                .order_by(col(PaymentOutput.id))
+                .offset(offset)
+                .limit(1000)
+            ).all()
+            if not payments:
+                break
+            buffer.seek(0)
+            buffer.truncate(0)
+            for p in payments:
+                writer.writerow(
+                    [
+                        p.network,
+                        p.txid,
+                        p.vout,
+                        p.amount_sats,
+                        p.confirmations,
+                        p.status,
+                        p.is_late,
+                        p.first_seen_at.isoformat(),
+                    ]
+                )
+            yield buffer.getvalue()
+            offset += len(payments)
+
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="proofpay-payments.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/payments/{payment_id}", response_model=PaymentView)
@@ -499,7 +611,12 @@ def dashboard_summary(session: SessionDep, user: CurrentUser) -> dict[str, Any]:
     counts = dict.fromkeys(("draft", "pending", "expired", "cancelled", "confirmed"), 0)
     for invoice in invoices:
         total, confirmed = sums(invoice, grouped.get(invoice.id, []))
-        received += confirmed
+        received += sum(
+            p.amount_sats
+            for p in grouped.get(invoice.id, [])
+            if p.status != "orphaned"
+            and p.confirmations >= invoice.required_confirmations
+        )
         effective = (
             "expired"
             if invoice.status == "pending" and aware(invoice.expires_at) <= now()

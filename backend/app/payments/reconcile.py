@@ -18,7 +18,10 @@ def run_once(limit: int = 500) -> tuple[int, int]:
     with Session(engine) as session:
         output_ids = session.exec(
             select(PaymentOutput.id)
-            .order_by(col(PaymentOutput.last_checked_at))
+            .order_by(
+                col(PaymentOutput.last_attempted_at).asc().nulls_first(),
+                col(PaymentOutput.id),
+            )
             .limit(limit)
         ).all()
     for output_id in output_ids:
@@ -29,6 +32,8 @@ def run_once(limit: int = 500) -> tuple[int, int]:
             before = output.last_checked_at
             try:
                 recheck_output(session, output, provider)
+                output.last_attempted_at = now()
+                session.add(output)
                 session.commit()
                 checked += 1
                 if output.last_checked_at == before:
@@ -36,6 +41,9 @@ def run_once(limit: int = 500) -> tuple[int, int]:
             except Exception:
                 session.rollback()
                 failed += 1
+                output.last_attempted_at = now()
+                session.add(output)
+                session.commit()
                 logger.error("Payment output reconciliation failed")
     with Session(engine) as session:
         pending = session.exec(

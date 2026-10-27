@@ -61,9 +61,7 @@ class UpdatePassword(SQLModel):
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str | None = Field(default=None)
-    google_id: str | None = Field(
-        default=None, unique=True, index=True, max_length=255
-    )
+    google_id: str | None = Field(default=None, unique=True, index=True, max_length=255)
     avatar_url: str | None = Field(default=None, max_length=512)
     created_at: datetime = Field(
         default_factory=get_datetime_utc,
@@ -208,6 +206,9 @@ class Invoice(InvoiceBase, table=True):
     fiat_reference_amount: str | None = Field(default=None, max_length=40)
     fiat_currency: str | None = Field(default=None, max_length=3)
     idempotency_key: str | None = Field(default=None, max_length=128)
+    scan_attempted_at: datetime | None = Field(default=None)
+    last_scanned_at: datetime | None = Field(default=None)
+    watched_at: datetime | None = Field(default=None)
     idempotency_hash: str | None = Field(default=None, max_length=64)
 
     merchant: Merchant | None = Relationship(back_populates="invoices")
@@ -219,6 +220,20 @@ class Invoice(InvoiceBase, table=True):
         sa_relationship_kwargs={"uselist": False},
         cascade_delete=True,
     )
+
+
+class AddressReservation(SQLModel, table=True):
+    """Permanent tombstone: even deleted drafts must never recycle a destination."""
+
+    __tablename__ = "address_reservation"
+    __table_args__ = (
+        UniqueConstraint("network", "address", name="uq_reserved_destination"),
+    )
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    network: str = Field(max_length=20)
+    address: str = Field(max_length=255)
+    invoice_id: uuid.UUID = Field(index=True)
+    created_at: datetime = Field(default_factory=get_datetime_utc)
 
 
 class InvoicePublic(InvoiceBase):
@@ -277,6 +292,7 @@ class PaymentOutput(PaymentOutputBase, table=True):
     invoice_id: uuid.UUID = Field(
         foreign_key="invoice.id", index=True, nullable=False, ondelete="CASCADE"
     )
+    last_attempted_at: datetime | None = Field(default=None)
     is_late: bool = Field(default=False)
 
     invoice: Invoice | None = Relationship(back_populates="payment_outputs")
