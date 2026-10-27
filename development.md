@@ -179,3 +179,18 @@ You can also run `prek` manually on all files from the project root:
 ```bash
 uv run prek run --all-files
 ```
+
+
+### Signup preflight and JWT configuration
+
+For the Vite development server, set `FRONTEND_HOST=http://localhost:5173` in
+`.env`. CORS origins must exactly match the browser origin, including scheme,
+host and port (`127.0.0.1` differs from `localhost`). An `OPTIONS` response of
+400 can indicate that the browser origin is not allowed. Restart the backend
+after changing environment values.
+
+`SECRET_KEY` must contain at least 32 characters. Generate a local random value
+with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` and set it in
+`.env`. Changing this key invalidates existing JWTs; sign in again. A JWT key
+warning and a failed CORS preflight are separate issues. Do not reset the database
+to fix either of them.

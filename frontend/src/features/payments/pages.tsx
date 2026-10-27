@@ -23,7 +23,10 @@ import {
   deleteLink,
   displayDate,
   errorMessage,
+  explorerUrl,
+  exportPayments,
   getLink,
+  getMerchantSettings,
   getPayment,
   getPublicLink,
   getPublicReceipt,
@@ -62,6 +65,7 @@ const primaryLink =
 const linkQuery = (id: string) => ({
   queryKey: ["payment-link", id],
   queryFn: () => getLink(id),
+  refetchInterval: 10000,
 })
 
 function QueryState({ loading, error }: { loading: boolean; error: unknown }) {
@@ -141,6 +145,7 @@ export function Overview() {
   const summary = useQuery({
     queryKey: ["payment-summary"],
     queryFn: getSummary,
+    refetchInterval: 10000,
   })
   if (!summary.data)
     return <QueryState loading={summary.isPending} error={summary.error} />
@@ -216,6 +221,7 @@ export function LinksPage() {
   const size = 8
   const query = useQuery({
     queryKey: ["payment-links", search, filter, page],
+    refetchInterval: 10000,
     queryFn: () =>
       listLinks({
         search: search || undefined,
@@ -335,7 +341,11 @@ function LinkFields({
           placeholder="0.05"
         />
       </Field>
-      <Field id="address" label="Recipient BCH address" required>
+      <Field
+        id="address"
+        label="Fresh receiving address (one per request)"
+        required
+      >
         <Input
           id="address"
           required
@@ -345,7 +355,9 @@ function LinkFields({
           autoComplete="off"
         />
         <p className="mt-1 text-xs text-slate-500">
-          Funds go directly to this address. Check it carefully before sharing.
+          Generate a fresh address in your receiving wallet. ProofPay
+          permanently reserves it for this request, including after expiry.
+          Never skip beyond your wallet’s recovery gap limit.
         </p>
       </Field>
       <Field id="description" label="Description (optional)">
@@ -401,7 +413,7 @@ function validateForm(values: LinkForm): string | null {
   )
     return "Enter a positive BCH amount with up to 8 decimal places."
   if (!validAddress(values.address.trim()))
-    return "Enter a valid Bitcoin Cash mainnet cash address."
+    return "Enter a valid BCH CashAddr for the deployment network."
   if (values.expiry && new Date(values.expiry).getTime() <= Date.now())
     return "Choose a future expiry date and time."
   return null
@@ -410,6 +422,10 @@ export function NewLinkPage() {
   const navigate = useNavigate()
   const cache = useQueryClient()
   const [values, setValues] = useState<LinkForm>(defaultForm)
+  const settings = useQuery({
+    queryKey: ["merchant-settings"],
+    queryFn: getMerchantSettings,
+  })
   const [error, setError] = useState("")
   const create = useMutation({
     mutationFn: createLink,
@@ -423,7 +439,12 @@ export function NewLinkPage() {
   })
   function submit(event: FormEvent) {
     event.preventDefault()
-    const problem = validateForm(values)
+    const problem =
+      validateForm(values) ||
+      (settings.data &&
+      !validAddress(values.address.trim(), settings.data.network)
+        ? `Use a fresh ${settings.data.network} receiving address.`
+        : null)
     if (problem) {
       setError(problem)
       return
@@ -451,6 +472,10 @@ export function NewLinkPage() {
       >
         <div className={`${card} space-y-5`}>
           <h2 className="border-b pb-4 font-semibold">Payment details</h2>
+          <p className="text-sm text-emerald-800">
+            Network: {settings.data?.network ?? "Loading…"} · Receiving wallet:{" "}
+            {settings.data?.business_name ?? "Your merchant wallet"}
+          </p>
           <LinkFields values={values} setValues={setValues} includeReference />
           {error && (
             <p role="alert" className="text-sm text-red-700">
@@ -674,14 +699,36 @@ export function LinkDetails({ id }: { id: string }) {
         </section>
         <section className={card}>
           <h2 className="mb-3 font-semibold">Request details</h2>
+          {link.verificationStale && link.status !== "draft" && (
+            <p role="status" className="mb-3 text-sm text-amber-800">
+              Payment verification is not current.
+            </p>
+          )}
           <dl>
             <DetailRow label="Reference" value={link.orderReference} />
             <DetailRow label="Amount" value={`${link.amount} BCH`} />
+            <DetailRow label="Network" value={link.network} />
+            <DetailRow
+              label="Confirmation policy"
+              value={link.requiredConfirmations}
+            />
             <DetailRow label="Recipient" value={link.address} />
             <DetailRow label="Created" value={displayDate(link.createdAt)} />
             <DetailRow label="Expires" value={displayDate(link.expiresAt)} />
             <DetailRow label="Payment" value={link.paymentStatus} />
           </dl>
+          <div className="mt-4 space-y-3 text-sm">
+            {link.payments.map((p) => (
+              <div key={p.id} className="rounded-lg border p-3">
+                <ExplorerLink network={link.network} txid={p.txid} />
+                <p>
+                  {satsToBch(p.amount_sats)} BCH · {p.confirmations}{" "}
+                  confirmations · {p.status}
+                  {p.is_late ? " · Late payment — review required" : ""}
+                </p>
+              </div>
+            ))}
+          </div>
           {link.description && (
             <p className="mt-4 text-sm text-slate-500">{link.description}</p>
           )}
@@ -738,6 +785,11 @@ export function MerchantQR({ id }: { id: string }) {
           <dl>
             <DetailRow label="Status" value={<LinkStatus link={link} />} />
             <DetailRow label="Expires" value={displayDate(link.expiresAt)} />
+            <DetailRow label="Network" value={link.network} />
+            <DetailRow
+              label="Confirmation policy"
+              value={link.requiredConfirmations}
+            />
             <DetailRow label="Recipient" value={link.address} />
           </dl>
           {link.paymentUri && (
@@ -751,12 +803,17 @@ export function MerchantQR({ id }: { id: string }) {
 }
 
 export function TransactionsPage() {
+  const csv = useMutation({
+    mutationFn: exportPayments,
+    onError: (error) => toast.error(errorMessage(error)),
+  })
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState("all")
   const [page, setPage] = useState(1)
   const size = 10
   const query = useQuery({
     queryKey: ["payments", search, status, page],
+    refetchInterval: 10000,
     queryFn: () =>
       listPayments({
         search: search || undefined,
@@ -771,6 +828,15 @@ export function TransactionsPage() {
         eyebrow="Payments"
         title="Transactions"
         description="Payment outputs associated with your requests."
+        action={
+          <Button
+            variant="outline"
+            disabled={csv.isPending}
+            onClick={() => csv.mutate()}
+          >
+            {csv.isPending ? "Exporting…" : "Export CSV"}
+          </Button>
+        }
       />
       <div className="dashboard-card flex flex-wrap gap-3 p-4">
         <SearchField
@@ -886,7 +952,15 @@ export function TransactionDetails({ id }: { id: string }) {
             label="Amount"
             value={`${satsToBch(data.amount_sats)} BCH`}
           />
-          <DetailRow label="Transaction ID" value={data.txid} />
+          <DetailRow label="Network" value={data.network} />
+          <DetailRow
+            label="Late payment"
+            value={data.is_late ? "Yes — merchant review required" : "No"}
+          />
+          <DetailRow
+            label="Transaction ID"
+            value={<ExplorerLink network={data.network} txid={data.txid} />}
+          />
           <DetailRow label="Output" value={data.vout} />
           <DetailRow label="Confirmations" value={data.confirmations} />
           <DetailRow
@@ -913,6 +987,7 @@ export function ReceiptsPage() {
   const size = 10
   const query = useQuery({
     queryKey: ["receipts", search, page],
+    refetchInterval: 10000,
     queryFn: () =>
       listReceipts({
         search: search || undefined,
@@ -1045,13 +1120,14 @@ function effectiveStatus(
   if (status === "pending" && new Date(expiresAt).getTime() <= Date.now())
     return "expired"
   if (status === "pending" && ["detected", "partial"].includes(paymentStatus))
-    return "detected"
+    return paymentStatus as PaymentStatus
   return status
 }
 export function Checkout({ publicId }: { publicId: string }) {
   const query = useQuery({
     queryKey: ["public-link", publicId],
     queryFn: () => getPublicLink(publicId),
+    refetchInterval: 5000,
   })
   if (!query.data)
     return <PublicState loading={query.isPending} error={query.error} />
@@ -1061,7 +1137,10 @@ export function Checkout({ publicId }: { publicId: string }) {
     link.expires_at,
     link.payment_status,
   )
-  const payable = status === "pending" && !!link.payment_uri
+  const payable =
+    link.status === "pending" &&
+    link.payment_status !== "detected" &&
+    !!link.payment_uri
   return (
     <PublicShell>
       <div className="space-y-5">
@@ -1071,6 +1150,14 @@ export function Checkout({ publicId }: { publicId: string }) {
           </div>
           <p className="text-sm text-slate-500">Payment request from</p>
           <h1 className="text-xl font-semibold">{link.merchant_name}</h1>
+          <p className="mt-2 text-sm font-medium text-emerald-800">
+            Network: {link.network} · {link.required_confirmations}{" "}
+            confirmation(s) required
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Expires {displayDate(link.expires_at)}
+          </p>
+          <FundingEvidence link={link} />
           <p className="mt-4 text-sm text-slate-500">{link.title}</p>
           {link.description && (
             <p className="mt-1 text-sm text-slate-500">{link.description}</p>
@@ -1102,7 +1189,10 @@ export function Checkout({ publicId }: { publicId: string }) {
                   value={link.receiving_address}
                   label="Copy address"
                 />
-                <CopyButton value={link.amount_bch} label="Copy amount" />
+                <CopyButton
+                  value={link.amount_due_bch}
+                  label="Copy amount due"
+                />
                 <CopyButton
                   value={link.payment_uri!}
                   label="Copy payment URI"
@@ -1131,6 +1221,7 @@ export function PaymentStatusPage({ publicId }: { publicId: string }) {
   const query = useQuery({
     queryKey: ["public-link-status", publicId],
     queryFn: () => getPublicLink(publicId, true),
+    refetchInterval: 5000,
   })
   if (!query.data)
     return <PublicState loading={query.isPending} error={query.error} />
@@ -1143,6 +1234,7 @@ export function PaymentStatusPage({ publicId }: { publicId: string }) {
   const heading = {
     draft: "Request unavailable",
     pending: "Waiting for payment",
+    partial: "Partially paid",
     detected: "Payment detected",
     confirmed: "Payment confirmed",
     expired: "Request expired",
@@ -1167,6 +1259,7 @@ export function PaymentStatusPage({ publicId }: { publicId: string }) {
               A checkout visit or QR scan does not confirm payment.
             </p>
           </div>
+          <FundingEvidence link={link} />
           <PaymentTimeline status={status} />
           <dl className="text-left">
             <DetailRow label="Invoice" value={link.title} />
@@ -1211,6 +1304,7 @@ export function PublicReceipt({
   const query = useQuery({
     queryKey: ["public-receipt", publicReceiptId],
     queryFn: () => getPublicReceipt(publicReceiptId),
+    refetchInterval: 10000,
   })
   if (!query.data)
     return <PublicState loading={query.isPending} error={query.error} />
@@ -1230,6 +1324,12 @@ export function PublicReceipt({
             label="Amount"
             value={`${satsToBch(receipt.amount_sats)} BCH`}
           />
+          <DetailRow
+            label="Requested"
+            value={`${satsToBch(receipt.requested_amount_sats)} BCH`}
+          />
+          <DetailRow label="Network" value={receipt.network} />
+          <DetailRow label="Destination" value={receipt.receiving_address} />
           <DetailRow label="Merchant" value={receipt.merchant_name} />
           <DetailRow label="Invoice" value={receipt.invoice_reference} />
           <DetailRow label="Receipt ID" value={receipt.reference} />
@@ -1243,6 +1343,20 @@ export function PublicReceipt({
             value={receipt.output_refs.join(", ") || "Unavailable"}
           />
         </dl>
+        {receipt.verification_stale && (
+          <p role="status" className="text-sm text-amber-800">
+            Verification is stale. The provider has not recently checked this
+            evidence.
+          </p>
+        )}
+        <div className="space-y-2 text-sm">
+          {receipt.payments.map((p) => (
+            <p key={`${p.txid}:${p.vout}`}>
+              <ExplorerLink network={receipt.network} txid={p.txid} /> · output{" "}
+              {p.vout} · {p.confirmations} confirmations · {p.status}
+            </p>
+          ))}
+        </div>
         <div className="flex flex-wrap justify-center gap-2">
           <CopyButton
             value={receiptUrl(publicReceiptId)}
@@ -1253,5 +1367,58 @@ export function PublicReceipt({
         </div>
       </div>
     </PublicShell>
+  )
+}
+
+function ExplorerLink({ network, txid }: { network: string; txid: string }) {
+  const url = explorerUrl(network, txid)
+  return url ? (
+    <a
+      className="break-all text-emerald-700 underline"
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {txid}
+    </a>
+  ) : (
+    <span className="break-all">{txid}</span>
+  )
+}
+function FundingEvidence({
+  link,
+}: {
+  link: import("./service").PublicCheckout
+}) {
+  return (
+    <div className="my-3 space-y-2 text-sm text-slate-600" aria-live="polite">
+      <p>
+        Received: {satsToBch(link.received_amount_sats)} BCH · confirmed:{" "}
+        {satsToBch(link.confirmed_amount_sats)} BCH
+      </p>
+      {link.payment_status === "partial" && (
+        <p>
+          Partially paid. Remaining due: {link.amount_due_bch} BCH. The QR
+          requests only this remaining amount.
+        </p>
+      )}
+      {link.overpaid_amount_sats > 0 && (
+        <p>
+          Overpayment: {satsToBch(link.overpaid_amount_sats)} BCH. Contact the
+          merchant.
+        </p>
+      )}
+      {link.late_amount_sats > 0 && (
+        <p>
+          Late payment recorded: {satsToBch(link.late_amount_sats)} BCH.
+          Merchant review required.
+        </p>
+      )}
+      {link.verification_stale && (
+        <p className="text-amber-800">
+          Verification is not current. Waiting for the backend provider.
+        </p>
+      )}
+    </div>
   )
 }

@@ -58,7 +58,8 @@ preserving the SDK session for a later remount. Backend login remains separate.
 
 The installed `hdwalletv1` handshake has no network identifier. No network option
 is invented, and no address prefix is used as evidence of Chipnet. The dialog
-always says **network unverified** and asks the user to select Chipnet in Cashonize.
+always says **Wallet network unverified** and asks the user to select the payment
+request’s network in Cashonize.
 
 No receive address is shown. The documented `manager.getPubkey(0, 0n)` derives a
 specific receive public key, but does not identify Cashonize's current receive

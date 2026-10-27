@@ -1,88 +1,91 @@
-# Full Stack FastAPI Template
+# ProofPay
 
-[![Test Docker Compose](../../actions/workflows/test-docker-compose.yml/badge.svg)](../../actions/workflows/test-docker-compose.yml)
-[![Test Backend](../../actions/workflows/test-backend.yml/badge.svg)](../../actions/workflows/test-backend.yml)
+A non-custodial Bitcoin Cash payment-request application for merchants and
+freelancers. Payments go directly to the merchant wallet. FastAPI and a separate
+reconciliation worker independently verify blockchain outputs; the browser cannot
+mark a request paid.
 
-## Technology Stack and Features
+The application uses React, TypeScript, Vite, TanStack Query/Router, Tailwind and
+Bun, with FastAPI, SQLModel, PostgreSQL, Alembic and Docker Compose. The merchant UI
+preserves the Emerald Trust theme.
 
-- ⚡ [**FastAPI**](https://fastapi.tiangolo.com) for the Python backend API.
-  - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) for the Python SQL database interactions (ORM).
-  - 🔍 [Pydantic](https://docs.pydantic.dev), used by FastAPI, for the data validation and settings management.
-  - 💾 [PostgreSQL](https://www.postgresql.org) as the SQL database.
-- 🚀 [React](https://react.dev) for the frontend.
-  - 🧩 Built into the backend application and served by FastAPI on the same domain as the API.
-  - 💃 Using TypeScript, hooks, [Vite](https://vitejs.dev), and other parts of a modern frontend stack.
-  - 🎨 [Tailwind CSS](https://tailwindcss.com) and [shadcn/ui](https://ui.shadcn.com) for the frontend components.
-  - 🤖 An automatically generated frontend client.
-  - 🧪 [Playwright](https://playwright.dev) for end-to-end testing.
-  - 🦇 Dark mode support.
-- ☁️ [FastAPI Cloud](https://fastapicloud.com) for deployment.
-- 🐋 [Docker Compose](https://www.docker.com) for local services and self-hosted deployment.
-  - 📞 [Traefik](https://traefik.io) as a reverse proxy with automatic HTTPS.
-- 🔒 Secure password hashing by default.
-- 🔑 JWT (JSON Web Token) authentication.
-- 📫 Email-based password recovery.
-- ✉️ [React Email](https://react.email) for email templates.
-- 📬 [Mailpit](https://mailpit.axllent.org) for local email testing during development.
-- ✅ Tests with [Pytest](https://pytest.org).
-- 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
+## Current journey
 
-### Dashboard Login
+Register/sign in → configure merchant settings → generate a fresh address in your
+BCH wallet → create a fixed-amount request → share its checkout link/QR → customer
+approves payment in a compatible wallet → backend detects and confirms payment →
+merchant dashboard and shareable printable receipt update.
 
-![Dashboard login screenshot](img/login.png)
+Implemented: persistent requests, draft editing, issuing/cancellation, search,
+filters/pagination, downloadable QR, live checkout polling, partial/late/overpayment
+reporting, confirmation tracking/reorg correction, receipts, transaction CSV export,
+responsive navigation, password/session management and existing Google OAuth.
 
-### Dashboard - Admin
+WizardConnect connection/session handling is present. **WizardConnect payment signing
+and automatic HD address derivation are still unfinished.** The current payment flow
+uses standard BCH URIs. Fresh addresses are supplied by the merchant and permanently
+reserved by the backend. See the [completion checklist](docs/completion-checklist.md)
+for verification status and limits; this is not yet a fully verified end-to-end release.
 
-![Admin dashboard screenshot](img/dashboard.png)
+## Run locally
 
-### Dashboard - Items
+Requires Python 3.14/uv, Bun and PostgreSQL (or Docker). Copy `.env.example` to `.env`
+and configure database/authentication values. For actual payment processing, configure
+a synchronized BCH Node with `txindex=1` and a persistent wallet with private keys
+disabled. See [payment provider setup](backend/PAYMENTS.md). An unconfigured provider
+fails closed when a request is issued; no simulated payments are enabled.
 
-![Items dashboard screenshot](img/dashboard-items.png)
+```sh
+bun install
+uv sync
+docker compose up -d db mailpit
+```
 
-### Dashboard - Dark Mode
+In separate terminals:
 
-![Dark mode dashboard screenshot](img/dashboard-dark.png)
+```sh
+cd backend
+../.venv/bin/alembic upgrade head
+../.venv/bin/python app/initial_data.py
+../.venv/bin/fastapi dev
+```
 
-### React Email Templates
+```sh
+cd backend
+../.venv/bin/python -m app.payments.worker
+```
 
-![Email templates screenshot](img/react-email.png)
+```sh
+bun run dev
+```
 
-### Mailpit - Local Email Testing
+Frontend: `http://localhost:5173`. API/docs: `http://localhost:8000/docs`.
+Alternatively `docker compose up --build -d` runs the development stack, migrations
+and payment worker. Production uses the base and deploy Compose files; follow
+[deployment instructions](deployment-docker-compose.md) and the
+[payment operations/recovery notes](backend/PAYMENTS.md).
 
-![Mailpit screenshot](img/mailpit.png)
+## Validate
 
-### Interactive API Documentation
+```sh
+cd backend
+BCH_NETWORK=mainnet ../.venv/bin/pytest tests/api/routes/test_payments.py -q
+```
 
-![API docs](img/docs.png)
+```sh
+cd frontend
+bun run build
+bun run test:wallet-sdk
+bun run test:wallet
+```
 
-## How to Use It
+Payment tests isolate their database/provider. Browser tests cover the real frontend
+against API/relay doubles. Run the full backend/auth suite against a separate migrated
+PostgreSQL test database; do not point destructive test fixtures at merchant data.
+Live BCHN payment verification and a real Cashonize payment demonstration remain
+required before claiming production readiness.
 
-Click the **Use this template** button at the top of this page to create a new repository.
+More: [backend development](backend/README.md), [frontend development](frontend/README.md),
+[wallet SDK notes](frontend/src/features/wallet/README.md), [general development](development.md).
 
-## Backend Development
-
-Backend docs: [backend/README.md](./backend/README.md).
-
-## Frontend Development
-
-Frontend docs: [frontend/README.md](./frontend/README.md).
-
-## Deployment
-
-FastAPI Cloud deployment: [deployment.md](./deployment.md).
-
-Self-hosted deployment with Docker Compose: [deployment-docker-compose.md](./deployment-docker-compose.md).
-
-## Development
-
-General development docs: [development.md](./development.md).
-
-This includes the local FastAPI and Vite workflow, Docker Compose services, `.env` configuration, and more.
-
-## Release Notes
-
-Check the file [release-notes.md](./release-notes.md).
-
-## License
-
-The Full Stack FastAPI Template is licensed under the terms of the MIT license.
+Built on the MIT-licensed Full Stack FastAPI Template. See [LICENSE](LICENSE).

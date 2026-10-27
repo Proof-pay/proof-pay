@@ -5,6 +5,7 @@ import { client } from "@/client/client.gen"
 export type PaymentStatus =
   | "draft"
   | "pending"
+  | "partial"
   | "detected"
   | "confirmed"
   | "expired"
@@ -13,6 +14,8 @@ export type PaymentStatus =
 export type Payment = {
   id: string
   invoice_id: string
+  network: string
+  is_late: boolean
   txid: string
   vout: number
   amount_sats: number
@@ -21,6 +24,9 @@ export type Payment = {
   first_seen_at: string
 }
 export type PaymentLink = {
+  network: string
+  requiredConfirmations: number
+  verificationStale: boolean
   id: string
   publicId: string
   orderReference: string
@@ -38,6 +44,9 @@ export type PaymentLink = {
   payments: Payment[]
 }
 export type InvoiceResponse = {
+  network: string
+  required_confirmations: number
+  verification_stale: boolean
   id: string
   public_token: string
   order_reference: string
@@ -55,6 +64,12 @@ export type InvoiceResponse = {
   payments: Payment[]
 }
 export type PublicCheckout = {
+  amount_due_bch: string
+  network: string
+  required_confirmations: number
+  verification_stale: boolean
+  late_amount_sats: number
+  overpaid_amount_sats: number
   merchant_name: string
   title: string
   description: string | null
@@ -71,6 +86,11 @@ export type PublicCheckout = {
   confirmed_amount_sats: number
 }
 export type Receipt = {
+  network: string
+  requested_amount_sats: number
+  receiving_address: string
+  verification_stale: boolean
+  payments: Payment[]
   id: string
   public_token: string
   reference: string
@@ -110,6 +130,9 @@ export function errorMessage(error: unknown): string {
 export function asLink(invoice: InvoiceResponse): PaymentLink {
   return {
     id: invoice.id,
+    network: invoice.network,
+    requiredConfirmations: invoice.required_confirmations,
+    verificationStale: invoice.verification_stale,
     publicId: invoice.public_token,
     orderReference: invoice.order_reference,
     title: invoice.title,
@@ -291,16 +314,75 @@ export async function getSummary() {
   return data
 }
 
-export function validAddress(value: string) {
+export function validAddress(value: string, network?: string) {
   try {
-    return (
-      cashaddr.decode(
-        value.startsWith("bitcoincash:") ? value : `bitcoincash:${value}`,
-      ).prefix === "bitcoincash"
+    const prefix =
+      network === "mainnet"
+        ? "bitcoincash"
+        : network === "regtest"
+          ? "bchreg"
+          : "bchtest"
+    const decoded = cashaddr.decode(
+      value.includes(":")
+        ? value
+        : `${network ? prefix : "bitcoincash"}:${value}`,
     )
+    return network
+      ? decoded.prefix === prefix
+      : ["bitcoincash", "bchtest", "bchreg"].includes(decoded.prefix)
   } catch {
-    return false
+    // cashaddrjs predates token-aware z/r aliases. Let the authoritative API
+    // validate their checksum and canonicalize to the identical BCH script.
+    const prefix =
+      network === "mainnet"
+        ? "bitcoincash"
+        : network === "regtest"
+          ? "bchreg"
+          : "bchtest"
+    return new RegExp(
+      `^${network ? prefix : "(?:bitcoincash|bchtest|bchreg)"}:[zr][qpzry9x8gf2tvdw0s3jn54khce6mua7l]{41,}$`,
+      "i",
+    ).test(value)
   }
+}
+export function explorerUrl(network: string, txid: string): string | null {
+  if (!/^[a-f0-9]{64}$/i.test(txid)) return null
+  const host = {
+    mainnet: "https://blockexplorer.cash/mainnet/tx/",
+    chipnet: "https://blockexplorer.cash/chipnet/tx/",
+    testnet: "https://blockexplorer.cash/testnet3/tx/",
+  }[network]
+  return host ? `${host}${txid}` : null
+}
+export type MerchantSettings = {
+  business_name: string
+  receiving_address: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  network: string
+  default_expiry_hours: number
+  required_confirmations: number
+}
+export async function getMerchantSettings() {
+  const { data } = await client.get<{ 200: MerchantSettings }, unknown, true>({
+    url: `${base}/merchant/settings`,
+    security: auth,
+    responseType: "json",
+  })
+  return data
+}
+export async function saveMerchantSettings(
+  body: Omit<MerchantSettings, "network">,
+) {
+  const { data } = await client.patch<{ 200: MerchantSettings }, unknown, true>(
+    {
+      url: `${base}/merchant/settings`,
+      security: auth,
+      responseType: "json",
+      body,
+    },
+  )
+  return data
 }
 export function checkoutUrl(link: PaymentLink) {
   const path = new URL(link.checkoutPath, window.location.origin).pathname
@@ -331,4 +413,18 @@ export function satsToBch(sats: number) {
     .padStart(8, "0")
     .replace(/0+$/, "")
   return fraction ? `${whole}.${fraction}` : String(whole)
+}
+
+export async function exportPayments() {
+  const { data } = await client.get<{ 200: Blob }, unknown, true>({
+    url: `${base}/payments/export.csv`,
+    security: auth,
+    responseType: "blob",
+  })
+  const url = URL.createObjectURL(data)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = "proofpay-payments.csv"
+  anchor.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

@@ -99,6 +99,7 @@ export function StatusBadge({ status }: { status: PaymentStatus }) {
   const styles = {
     draft: "border border-slate-200 bg-slate-50 text-slate-700",
     pending: "border border-amber-200 bg-amber-50 text-amber-800",
+    partial: "border border-amber-200 bg-amber-50 text-amber-800",
     detected: "border border-blue-200 bg-blue-50 text-blue-800",
     confirmed: "border border-green-200 bg-green-50 text-green-800",
     expired: "border border-red-200 bg-red-50 text-red-800",
@@ -108,6 +109,7 @@ export function StatusBadge({ status }: { status: PaymentStatus }) {
   const Icon = {
     draft: Clock3,
     pending: Clock3,
+    partial: Radio,
     detected: Radio,
     confirmed: Check,
     expired: CircleAlert,
@@ -130,7 +132,7 @@ export function LinkStatus({ link }: { link: PaymentLink }) {
     ? "expired"
     : link.status === "pending" &&
         ["detected", "partial"].includes(link.paymentStatus)
-      ? "detected"
+      ? (link.paymentStatus as PaymentStatus)
       : link.status
   return <StatusBadge status={status} />
 }

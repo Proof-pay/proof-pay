@@ -47,6 +47,7 @@ services:
   backend:
     restart: always
     environment:
+      FASTAPI_ENV: production
       FRONTEND_HOST: https://${DOMAIN:?Variable not set}
     labels:
       # Route HTTPS traffic for this domain
@@ -55,6 +56,11 @@ services:
       - traefik.http.routers.backend-https.tls=true
       # Use the Let's Encrypt resolver
       - traefik.http.routers.backend-https.tls.certresolver=le
+
+  payment-worker:
+    environment:
+      FASTAPI_ENV: production
+      FRONTEND_HOST: https://${DOMAIN:?Variable not set}
 
 volumes:
   # Create a volume to store the certificates, even if the container is recreated

@@ -48,12 +48,14 @@ services:
 
   backend:
     image: backend:latest
+    command: ["bash", "-c", "bash scripts/prestart.sh && exec fastapi run --workers 4"]
     depends_on:
       db:
         condition: service_healthy
         restart: true
-    environment:
+    environment: &backend-environment
       PROJECT_NAME: ${PROJECT_NAME:?Variable not set}
+      FRONTEND_HOST: ${FRONTEND_HOST:-http://localhost:5173}
       SECRET_KEY: ${SECRET_KEY:?Variable not set}
       FIRST_SUPERUSER: ${FIRST_SUPERUSER:?Variable not set}
       FIRST_SUPERUSER_PASSWORD: ${FIRST_SUPERUSER_PASSWORD:?Variable not set}
@@ -93,6 +95,20 @@ services:
       # Route HTTP traffic for this domain
       - traefik.http.routers.backend-http.rule=Host(`${DOMAIN:-localhost}`)
       - traefik.http.routers.backend-http.entrypoints=http
+
+  payment-worker:
+    image: backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.payments.worker"]
+    restart: unless-stopped
+    environment: *backend-environment
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      disable: true
 
 volumes:
   app-db-data:

@@ -98,10 +98,10 @@ export function ConnectWallet() {
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-          <strong>Chipnet testing · network unverified</strong>
+          <strong>Wallet network unverified</strong>
           <p className="mt-1">
-            Select Chipnet in Cashonize before connecting. WizardConnect does
-            not report a verified wallet network.
+            Select the payment request’s network in Cashonize before paying.
+            WizardConnect does not report a verified wallet network.
           </p>
         </div>
         {wallet.error && (

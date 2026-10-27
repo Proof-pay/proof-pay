@@ -73,9 +73,7 @@ test("relay connection stays pending; QR, copy, mobile layout and cancel work", 
     .getByLabel("Connection URI", { exact: true })
     .inputValue()
   expect(uri.startsWith("wiz://")).toBe(true)
-  await expect(
-    page.getByText("Chipnet testing · network unverified"),
-  ).toBeVisible()
+  await expect(page.getByText("Wallet network unverified")).toBeVisible()
   await page
     .getByRole("button", { name: "Copy connection URI", exact: true })
     .click()
