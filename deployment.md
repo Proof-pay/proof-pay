@@ -95,3 +95,26 @@ Install the following GitHub Apps to enable the included repository automation:
 * [PR Submit](https://github.com/apps/pr-submit) lets the **Bump pre-commit hooks** and **Prepare Release** workflows create pull requests.
 
 To publish code coverage with [Smokeshow](https://github.com/samuelcolvin/smokeshow), add `SMOKESHOW_AUTH_KEY` as a repository secret.
+
+
+## Vercel Services
+
+Deploy with the repository root (`.`) as the Vercel project Root Directory.
+`vercel.json` defines two services: FastAPI at `backend` with entrypoint
+`app.main:app`, and Vite at `frontend`. `/api/*` keeps its original path and routes
+to FastAPI; all other requests go to the frontend. The Vercel frontend build writes
+`frontend/dist`, while the regular Docker build still bundles the SPA into the backend.
+See https://vercel.com/docs/services/config-reference for service configuration.
+
+Configure backend environment variables in Vercel, including `PROJECT_NAME`,
+`SECRET_KEY` (at least 32 characters), `DATABASE_URL` (reachable PostgreSQL),
+`FIRST_SUPERUSER`, `FIRST_SUPERUSER_PASSWORD`, `FASTAPI_ENV=production`, and
+`FRONTEND_HOST`/`PUBLIC_CHECKOUT_BASE_URL` matching the deployed HTTPS origin.
+Leave `VITE_API_URL` empty for same-origin `/api/v1` calls. Configure the BCH provider
+variables for payment verification. Local `.env` values are not a production setup.
+
+Run `alembic upgrade head` from `backend` against the deployment database before
+serving traffic. The Vercel ASGI entrypoint does not run the Docker prestart script.
+The continuous payment reconciliation worker also needs a separate persistent
+worker host (for example the Compose payment-worker); this web-service configuration
+does not start it.
