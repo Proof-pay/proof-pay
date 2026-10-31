@@ -1,5 +1,8 @@
 # ProofPay completion checklist
 
+Historical checklist: destination allocation and validation details below are superseded
+by [reusable BCH addresses](reusable-bch-addresses.md).
+
 ## Implemented and checked
 - [x] Inspected existing code/docs/manifests/migrations/tests/Compose and clean initial git state; preserved authentication and existing routes.
 - [x] Existing merchant API-backed dashboard, request search/filter/pagination, drafts/issue/cancellation, QR download, responsive navigation retained.

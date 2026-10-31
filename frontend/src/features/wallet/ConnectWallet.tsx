@@ -57,6 +57,7 @@ export function ConnectWallet() {
         variant="outline"
         onClick={openWallet}
         disabled={wallet.busy}
+        title="Wallet connection only. Server payment monitoring runs independently."
         aria-label={
           connected
             ? `Connected wallet: ${wallet.walletName || "Wallet"}`
@@ -77,7 +78,7 @@ export function ConnectWallet() {
           {connected
             ? wallet.walletName || "Connected wallet"
             : waiting
-              ? "Connecting…"
+              ? "Connecting wallet…"
               : wallet.state === "failed"
                 ? "Retry wallet"
                 : "Connect Wallet"}

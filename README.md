@@ -11,9 +11,9 @@ preserves the Emerald Trust theme.
 
 ## Current journey
 
-Register/sign in → configure merchant settings → generate a fresh address in your
-BCH wallet → create a fixed-amount request → share its checkout link/QR → customer
-approves payment in a compatible wallet → backend detects and confirms payment →
+Register/sign in → configure merchant settings → choose a receiving address from your
+BCH wallet (reuse supported) → create a fixed-amount request → share its checkout link/QR → customer
+approves payment in a compatible wallet → merchant reviews and assigns verified outputs → backend confirms payment →
 merchant dashboard and shareable printable receipt update.
 
 Implemented: persistent requests, draft editing, issuing/cancellation, search,
@@ -23,8 +23,9 @@ responsive navigation, password/session management and existing Google OAuth.
 
 WizardConnect connection/session handling is present. **WizardConnect payment signing
 and automatic HD address derivation are still unfinished.** The current payment flow
-uses standard BCH URIs. Fresh addresses are supplied by the merchant and permanently
-reserved by the backend. See the [completion checklist](docs/completion-checklist.md)
+uses standard BCH URIs. Merchant-supplied receiving addresses can be reused across
+requests. Shared and historical destinations require merchant review; newly tracked
+single-request destinations support automatic credit. See [address reuse and deployment](docs/reusable-bch-addresses.md). See the [completion checklist](docs/completion-checklist.md)
 for verification status and limits; this is not yet a fully verified end-to-end release.
 
 ## Run locally

@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { Link, useNavigate } from "@tanstack/react-router"
 import {
   ArrowLeft,
@@ -16,11 +21,13 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  allocateOutputs,
   asLink,
   cancelLink,
   checkoutUrl,
   createLink,
   deleteLink,
+  detectedOutputs,
   displayDate,
   errorMessage,
   explorerUrl,
@@ -38,7 +45,9 @@ import {
   listReceipts,
   type PaymentLink,
   type PaymentStatus,
+  type ReviewedOutput,
   receiptUrl,
+  reviewOutputs,
   satsToBch,
   updateLink,
   validAddress,
@@ -67,6 +76,24 @@ const linkQuery = (id: string) => ({
   queryFn: () => getLink(id),
   refetchInterval: 10000,
 })
+
+async function refreshPaymentQueries(cache: QueryClient, link: PaymentLink) {
+  cache.setQueryData(["payment-link", link.id], link)
+  await Promise.all(
+    [
+      ["payment-link", link.id],
+      ["payment-links"],
+      ["payment-summary"],
+      ["payments"],
+      ["payment"],
+      ["receipts"],
+      ["public-receipt"],
+      ["public-link", link.publicId],
+      ["public-link-status", link.publicId],
+      ["detected-outputs", link.id],
+    ].map((queryKey) => cache.invalidateQueries({ queryKey })),
+  )
+}
 
 function QueryState({ loading, error }: { loading: boolean; error: unknown }) {
   if (loading)
@@ -341,23 +368,20 @@ function LinkFields({
           placeholder="0.05"
         />
       </Field>
-      <Field
-        id="address"
-        label="Fresh receiving address (one per request)"
-        required
-      >
+      <Field id="address" label="BCH receiving address" required>
         <Input
           id="address"
           required
           value={values.address}
           onChange={(e) => set("address", e.target.value)}
-          placeholder="bitcoincash:..."
+          placeholder="CashAddr for the selected network"
           autoComplete="off"
         />
         <p className="mt-1 text-xs text-slate-500">
-          Generate a fresh address in your receiving wallet. ProofPay
-          permanently reserves it for this request, including after expiry.
-          Never skip beyond your wallet’s recovery gap limit.
+          You can reuse your receiving address. Reused or historical
+          destinations require reviewing detected outputs on the request detail
+          screen. Newly tracked single-request destinations can be credited
+          automatically.
         </p>
       </Field>
       <Field id="description" label="Description (optional)">
@@ -443,7 +467,7 @@ export function NewLinkPage() {
       validateForm(values) ||
       (settings.data &&
       !validAddress(values.address.trim(), settings.data.network)
-        ? `Use a fresh ${settings.data.network} receiving address.`
+        ? `Use a valid ${settings.data.network} receiving address.`
         : null)
     if (problem) {
       setError(problem)
@@ -743,10 +767,203 @@ export function LinkDetails({ id }: { id: string }) {
           )}
         </section>
       </div>
+      {link.status !== "draft" && <PaymentAllocation link={link} />}
       {link.status === "draft" && (
         <DraftEditor key={link.id + link.createdAt} link={link} />
       )}
     </div>
+  )
+}
+
+function PaymentAllocation({ link }: { link: PaymentLink }) {
+  const cache = useQueryClient()
+  const [txid, setTxid] = useState("")
+  const [reviewedTxid, setReviewedTxid] = useState("")
+  const [rows, setRows] = useState<ReviewedOutput[]>([])
+  const [selected, setSelected] = useState<number[]>([])
+  const [error, setError] = useState("")
+  const detected = useQuery({
+    queryKey: ["detected-outputs", link.id],
+    queryFn: () => detectedOutputs(link.id),
+    refetchInterval: 10000,
+  })
+  const review = useMutation({
+    mutationFn: (transaction: string) => reviewOutputs(link.id, transaction),
+    onSuccess: async (data, transaction) => {
+      setRows(data)
+      setReviewedTxid(transaction)
+      setSelected([])
+      setError("")
+      await Promise.all(
+        [
+          ["payment-link", link.id],
+          ["payment-links"],
+          ["payment-summary"],
+          ["receipts"],
+          ["public-receipt"],
+          ["public-link", link.publicId],
+        ].map((queryKey) => cache.invalidateQueries({ queryKey })),
+      )
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  })
+  const allocate = useMutation({
+    mutationFn: () => allocateOutputs(link.id, reviewedTxid, selected),
+    onSuccess: async (updated) => {
+      setRows([])
+      setSelected([])
+      setError("")
+      await refreshPaymentQueries(cache, updated)
+      toast.success("Verified outputs assigned to this request")
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  })
+  return (
+    <section className={`${card} space-y-4`}>
+      <h2 className="font-semibold">Review and allocate payments</h2>
+      <p className="text-sm text-slate-500">
+        Detected outputs are unassigned and do not count toward this request or
+        its receipt. Confirm which request the payment belongs to before
+        assigning it. Expired or cancelled requests retain the late-payment
+        policy.
+      </p>
+      {detected.isPending && <p role="status">Loading detected payments…</p>}
+      {detected.error && <p role="alert">{errorMessage(detected.error)}</p>}
+      <p className="text-sm text-slate-500">
+        Server payment monitoring runs independently of the wallet connection.
+      </p>
+      {detected.data && (
+        <div className="text-sm" role="status">
+          <p>
+            Last successful address scan:{" "}
+            {displayDate(detected.data.last_successful_scan_at)}
+          </p>
+          {detected.data.scan_status === "failed" && (
+            <p className="text-amber-800">
+              The latest address scan failed. Saved observations may be
+              incomplete; an empty list does not mean no payment arrived.
+            </p>
+          )}
+          {detected.data.scan_status === "never" && (
+            <p className="text-amber-800">
+              No successful address scan yet. Check the payment worker and
+              provider.
+            </p>
+          )}
+          {detected.data.scan_status === "stale" && (
+            <p className="text-amber-800">
+              Address monitoring is stale. Displaying saved observations.
+            </p>
+          )}
+          {detected.data.scan_status === "current" &&
+            detected.data.outputs.length === 0 && (
+              <p>
+                No unassigned outputs detected in the last successful scan. You
+                can also enter a transaction ID.
+              </p>
+            )}
+        </div>
+      )}
+      {detected.data?.outputs.map((output) => (
+        <div
+          key={`${output.txid}:${output.vout}`}
+          className="flex flex-wrap items-center gap-3 rounded-lg border p-3 text-sm"
+        >
+          <span className="break-all">
+            {output.txid}:{output.vout} · {satsToBch(output.amount_sats)} BCH ·{" "}
+            {output.confirmations} confirmations
+          </span>
+          <Button
+            variant="outline"
+            disabled={review.isPending || allocate.isPending}
+            onClick={() => {
+              setTxid(output.txid)
+              setRows([])
+              review.mutate(output.txid)
+            }}
+          >
+            Review transaction
+          </Button>
+        </div>
+      ))}
+      <form
+        className="flex gap-3"
+        onSubmit={(event) => {
+          event.preventDefault()
+          setRows([])
+          review.mutate(txid.trim())
+        }}
+      >
+        <Input
+          aria-label="Transaction ID"
+          placeholder="Transaction ID"
+          value={txid}
+          onChange={(event) => {
+            setTxid(event.target.value)
+            setRows([])
+            setSelected([])
+          }}
+          required
+          pattern="[a-fA-F0-9]{64}"
+        />
+        <Button type="submit" disabled={review.isPending || allocate.isPending}>
+          {review.isPending ? "Verifying…" : "Verify outputs"}
+        </Button>
+      </form>
+      {rows.map((output) => (
+        <label
+          key={output.vout}
+          className="flex items-center gap-3 rounded-lg border p-3 text-sm"
+        >
+          <input
+            type="checkbox"
+            disabled={output.allocated || allocate.isPending}
+            checked={selected.includes(output.vout)}
+            onChange={(event) =>
+              setSelected(
+                event.target.checked
+                  ? [...selected, output.vout]
+                  : selected.filter((vout) => vout !== output.vout),
+              )
+            }
+          />
+          Output {output.vout} · {satsToBch(output.amount_sats)} BCH ·{" "}
+          {output.confirmations} confirmations
+          {output.allocated &&
+            (output.assigned_to_this_invoice
+              ? " · Allocated to this request"
+              : " · Allocated to another request")}
+          {output.allocated &&
+            !output.assigned_to_this_invoice &&
+            output.allocated_invoice_id && (
+              <Link
+                to="/dashboard/payment-links/$id"
+                params={{ id: output.allocated_invoice_id }}
+                className="text-emerald-700 underline"
+              >
+                {output.allocated_order_reference ?? "View allocated request"}
+              </Link>
+            )}
+        </label>
+      ))}
+      {rows.length > 0 && (
+        <Button
+          disabled={
+            selected.length === 0 || allocate.isPending || review.isPending
+          }
+          onClick={() => allocate.mutate()}
+        >
+          {allocate.isPending
+            ? "Assigning…"
+            : "Assign selected outputs to this request"}
+        </Button>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-700">
+          {error}
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -929,11 +1146,13 @@ export function TransactionDetails({ id }: { id: string }) {
   const payment = useQuery({
     queryKey: ["payment", id],
     queryFn: () => getPayment(id),
+    refetchInterval: 10000,
   })
   const invoice = useQuery({
     queryKey: ["payment-link", payment.data?.invoice_id],
     queryFn: () => getLink(payment.data!.invoice_id),
     enabled: !!payment.data,
+    refetchInterval: 10000,
   })
   if (!payment.data)
     return <QueryState loading={payment.isPending} error={payment.error} />
@@ -1261,6 +1480,11 @@ export function PaymentStatusPage({ publicId }: { publicId: string }) {
           </div>
           <FundingEvidence link={link} />
           <PaymentTimeline status={status} />
+          <p className="mt-3 text-sm text-slate-500">
+            After sending BCH, the merchant reviews and assigns the verified
+            payment to this request. The status updates after allocation and
+            chain confirmation.
+          </p>
           <dl className="text-left">
             <DetailRow label="Invoice" value={link.title} />
             <DetailRow label="Amount" value={`${link.amount_bch} BCH`} />
@@ -1337,7 +1561,14 @@ export function PublicReceipt({
             label="Verified"
             value={displayDate(receipt.verified_at)}
           />
-          <DetailRow label="Status" value={receipt.current_status} />
+          <DetailRow
+            label="Receipt evidence status"
+            value={receipt.current_status}
+          />
+          <DetailRow
+            label="Invoice payment status"
+            value={receipt.invoice_payment_status}
+          />
           <DetailRow
             label="Outputs"
             value={receipt.output_refs.join(", ") || "Unavailable"}
@@ -1346,14 +1577,27 @@ export function PublicReceipt({
         {receipt.verification_stale && (
           <p role="status" className="text-sm text-amber-800">
             Verification is stale. The provider has not recently checked this
-            evidence.
+            evidence. The status above is the last known payment status.
+          </p>
+        )}
+        {receipt.missing_output_refs?.length > 0 && (
+          <p role="alert" className="text-sm text-amber-800">
+            Some credited output records are unavailable. This receipt requires
+            reconciliation.
           </p>
         )}
         <div className="space-y-2 text-sm">
+          <h2 className="font-semibold">Credited receipt outputs</h2>
+          <p className="text-slate-500">
+            Only the outputs recorded when this receipt was issued appear here.
+            Later invoice payments are listed on the merchant request detail
+            screen.
+          </p>
           {receipt.payments.map((p) => (
             <p key={`${p.txid}:${p.vout}`}>
               <ExplorerLink network={receipt.network} txid={p.txid} /> · output{" "}
-              {p.vout} · {p.confirmations} confirmations · {p.status}
+              {p.vout} · {satsToBch(p.amount_sats)} BCH · {p.confirmations}{" "}
+              confirmations · {p.status}
             </p>
           ))}
         </div>

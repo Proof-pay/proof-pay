@@ -23,6 +23,19 @@ Start the FastAPI development server:
 uv run fastapi dev
 ```
 
+Payment verification requires a separate worker. In another terminal, from `backend`, run:
+
+```bash
+uv run python -m app.payments.worker
+```
+
+The API dev server's reload does **not** reload this worker. Restart the worker after
+payment-code or `.env` changes. It rechecks allocated outputs on every configured
+interval, including completed receipts, and discovers unassigned outputs separately.
+Keep the worker running while using the dashboard. For chipnet, start the node as
+shown in [CHIPNET-LOCAL.md](CHIPNET-LOCAL.md); node startup alone does not start the
+native Python worker.
+
 In another terminal, from the project root, install the frontend dependencies and start the Vite development server:
 
 ```bash

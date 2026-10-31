@@ -99,7 +99,9 @@ export type Receipt = {
   amount_sats: number
   output_refs: string[]
   issued_at: string
-  verified_at: string
+  verified_at: string | null
+  missing_output_refs: string[]
+  invoice_payment_status: string
   verification_url: string
   current_status: string
   statement: string
@@ -427,4 +429,50 @@ export async function exportPayments() {
   anchor.download = "proofpay-payments.csv"
   anchor.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export type ReviewedOutput = {
+  txid: string
+  vout: number
+  amount_sats: number
+  confirmations: number
+  allocated?: boolean
+  allocated_invoice_id?: string | null
+  allocated_order_reference?: string | null
+  assigned_to_this_invoice?: boolean
+}
+export type PaymentMonitoring = {
+  outputs: ReviewedOutput[]
+  scan_status: "never" | "failed" | "stale" | "current"
+  last_successful_scan_at: string | null
+  last_scan_attempt_at: string | null
+}
+export async function detectedOutputs(id: string) {
+  const { data } = await client.get<{ 200: PaymentMonitoring }, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}/monitoring`,
+    security: auth,
+    responseType: "json",
+  })
+  return data
+}
+export async function reviewOutputs(id: string, txid: string) {
+  const { data } = await client.get<{ 200: ReviewedOutput[] }, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}/transactions/${encodeURIComponent(txid)}`,
+    security: auth,
+    responseType: "json",
+  })
+  return data
+}
+export async function allocateOutputs(
+  id: string,
+  txid: string,
+  vouts: number[],
+) {
+  const { data } = await client.post<{ 200: InvoiceResponse }, unknown, true>({
+    url: `${base}/payment-requests/${encodeURIComponent(id)}/claims/${encodeURIComponent(txid)}`,
+    security: auth,
+    responseType: "json",
+    body: { vouts },
+  })
+  return asLink(data)
 }

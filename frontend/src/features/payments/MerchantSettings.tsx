@@ -51,7 +51,8 @@ function SettingsForm({ initial }: { initial: Settings }) {
       </p>
       <p className="text-sm text-slate-500">
         Use a wallet you control on this network. Every issued request needs its
-        own fresh address. Settings changes apply to future requests.
+        BCH receiving address, which can be reused. Settings changes apply to
+        future requests.
       </p>
       {(
         [

@@ -1,0 +1,14 @@
+# Run alongside the native development backend: docker compose -f compose.chipnet.yml up -d
+services:
+  bchn:
+    image: zquestz/bitcoin-cash-node:29.2.0@sha256:f3109c7e75e5f15fd840b3fd21aa99e32f12d7753c3fefc93e19ed9e164e8d1e
+    restart: unless-stopped
+    command: ["bitcoind", "-datadir=/data", "-conf=/etc/bitcoin/bitcoin.conf"]
+    ports:
+      - "127.0.0.1:48332:48332"
+    volumes:
+      - proofpay-chipnet-data:/data
+      - ./.env.chipnet.conf:/etc/bitcoin/bitcoin.conf:ro
+    stop_grace_period: 60s
+volumes:
+  proofpay-chipnet-data:
