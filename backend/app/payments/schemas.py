@@ -221,7 +221,9 @@ class PublicReceipt(BaseModel):
     required_confirmations: int
     output_refs: list[str]
     issued_at: datetime
-    verified_at: datetime
+    verified_at: datetime | None
+    missing_output_refs: list[str] = Field(default_factory=list)
+    invoice_payment_status: str = "unavailable"
     verification_url: str
     current_status: str
     verification_stale: bool

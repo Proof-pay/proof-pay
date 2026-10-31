@@ -23,18 +23,24 @@ policy. Merchant-setting changes cannot rewrite issued requests.
 
 ## Destinations and accounting
 
-Each request requires a **fresh merchant-wallet address**, supplied from that
-wallet's receive screen. ProofPay permanently reserves `(network, address)` in
-one database transaction with request creation. Reservation survives draft deletion,
-cancellation and expiry. A concurrent reuse fails with 409; use a new wallet address.
-The application has no spending keys and never creates a custodial wallet.
+Requests can reuse a merchant-supplied **BCH receiving address**, including identical
+amounts. Permanent `(network, address)` associations now protect merchant isolation;
+they survive edits, draft deletion, cancellation and expiry. Another merchant cannot
+claim that destination. Unknown or conflicting historical ownership is blocked.
+Entering an address is not proof of wallet control. Verify the address and network
+in your wallet. ProofPay has no spending keys and never generates keys or wallets.
 
-This is explicit address allocation, not automatic HD derivation. Generate addresses
-sequentially in the merchant wallet and respect its recovery gap limit. Do not paste
-arbitrarily far-ahead derived addresses. Verify the address and network in the wallet
-before issuing. Receiving-address control is not independently proven. A configured
-settings address identifies the receiving wallet and is a default for API clients;
-it can be used only once, not shared across requests.
+New destinations can be credited automatically while tracked as associated with
+exactly one request. Any reuse permanently disables that policy; historical
+associations default to merchant review because exclusivity cannot be proven.
+Migration `a4d28e9f170c` adds this permission, false for all historical rows.
+Detection stores separate observations; only authorized allocation enters totals
+and receipts. Automatic allocation holds the invoice and association locks, so a
+concurrent reuse cannot race an exclusivity decision. The request detail
+screen lets merchants select a detected transaction or enter an ID, review verified
+outputs, and assign selected vouts. Claims reverify through BCHN and never move
+existing allocations. Public checkout tokens cannot allocate payments. See
+[address reuse, API details and deployment](../docs/reusable-bch-addresses.md).
 
 Amounts are BCH decimal strings at input and integer satoshis in storage. Fiat
 reference fields are descriptive merchant-entered context, not fiat-denominated
@@ -46,14 +52,19 @@ Lifecycle (`draft/pending/expired/cancelled/confirmed`) is separate from funding
 (`pending/partial/detected/confirmed`). Detection never means confirmation. Outputs
 are independently checked against the exact locking script and actual amount.
 `(network, txid, vout)` is globally unique. Duplicate reconciliation cannot credit twice.
-Overpayments are retained in full. New money first observed after expiry/cancellation
+Overpayments are retained in full. New outputs first allocated after expiry/cancellation
 is retained as late evidence, excluded from settlement, and needs merchant review.
 After a provider outage, discovery time may be later than actual arrival; classification
 is deliberately conservative rather than inventing an earlier mempool observation.
-Money detected before expiry may still satisfy confirmation policy after expiry.
+Outputs allocated before expiry may still satisfy confirmation policy after expiry.
+Allocation after expiry is conservatively late even if a prior observation exists.
 
 Receipts snapshot qualifying outputs when settlement first satisfies confirmation
-policy. The public verification response includes current evidence and status, so
+policy. The evidence list, last successful verification time, freshness and receipt
+status refer only to those frozen `(txid, vout)` references; later invoice allocations
+remain visible on the merchant detail screen. Receipt evidence status and overall
+invoice payment status are returned separately. An invalidated receipt output is
+not silently replaced by a subsequent payment. The public verification response includes current evidence and status, so
 confirmation loss/orphaning corrects the live proof. The issued amount remains a
 snapshot. A receipt verifies blockchain payment to the recorded destination; it
 proves neither goods delivery nor payer identity. Public responses exclude internal
@@ -71,7 +82,9 @@ authentication using `BCH_RPC_USER` and `BCH_RPC_PASSWORD`.
 
 The adapter checks `getblockchaininfo` network/sync state and watch-wallet health.
 Before publishing checkout, `importaddress(address, "proofpay", false)` installs a
-watch. New addresses need no historical rescan because they have never been shared.
+watch. Reusing an already watched destination avoids repeated imports. To discover
+payments predating the initial watch, rescan the watch wallet or review a transaction
+ID directly (with `txindex=1`).
 `listreceivedbyaddress(0, false, true, address)` discovers candidate txids including
 unconfirmed receipts. Its balances are **never used for credit**. Every candidate is
 fetched through `getrawtransaction(txid, 1)` and outputs independently verified.
@@ -102,10 +115,13 @@ Provider references: [importaddress](https://docs.bitcoincashnode.org/doc/json-r
 `payment-worker`. Backend startup applies Alembic migrations and initial user setup;
 the worker starts only after backend health succeeds. It uses a PostgreSQL session
 advisory lock so duplicate worker replicas cannot create competing watchers. API
-workers never start watchers. The polling worker discovers up to 100 requests and
+workers never start watchers. The polling worker discovers up to 100 distinct destinations and
 rechecks up to 500 outputs per cycle in durable oldest-attempt-first order. Failed
 items move to the back of the queue without refreshing verification timestamps.
-Failures retry with capped backoff; each HTTP request has an eight-second timeout.
+Allocated-output checks run at the configured interval independently of address
+discovery. Discovery runs in one separate thread under the same process advisory
+lock, so a slow scan or failed destination cannot impose a global backoff on known
+payment evidence. Each provider HTTP request has an eight-second timeout.
 Logs contain request IDs and counters, not wallet sessions, addresses or RPC secrets.
 
 A restart resumes from database state and the node's persistent watch wallet,
@@ -121,11 +137,13 @@ the earliest issue before resuming the worker. Importing without rescan cannot r
 payments received while the watch was missing. Never replace the watch wallet with a
 wallet holding private keys.
 
-Migration `3c68e4b2a910` permanently reserves existing destinations. Existing issued
-invoices retain manual claims and rechecking; they are not automatically watched,
-because earlier versions allowed shared addresses. Do not guess how to attribute
-legacy shared-address history. Duplicate legacy drafts must be edited to a new
-address before issue. Existing transactions/receipts remain intact.
+Migration `7e91bc24a610` adds merchant scope to historical reservations and creates
+unassigned observations. It preserves allocations/receipts and blocks ambiguous or
+unknown ownership. Existing legacy destinations are not watched automatically;
+restore/import and rescan their watch history as needed. Same-merchant legacy drafts
+can issue to reused addresses. Stop old API/workers before deploying this migration
+and new code together; old workers must not run the automatic allocation policy.
+The migration requires an online connection and rejects unsafe downgrade.
 
 For a production stack use `docker compose -f compose.yml -f compose.deploy.yml up
 --build -d` after configuring domain/TLS and secrets. Docker Compose development
@@ -135,7 +153,7 @@ or isolated PostgreSQL database before upgrading an existing deployment.
 ## Validation and remaining work
 
 Payment regression tests use an isolated SQLite database and provider doubles. They
-cover privacy/ownership, accounting, duplicate destination/output rejection, discovery
+cover privacy/ownership, accounting, merchant-scoped destination reuse and duplicate output rejection, discovery
 across cycles, outages, reorg correction, late payments and CSV. SDK and browser tests
 cover pairing lifecycle and public checkout polling/remaining amounts/mobile layout.
 These tests do **not** establish live BCHN/Cashonize interoperability.
@@ -147,3 +165,52 @@ automatic HD allocation and a real wallet payment demonstration remain unfinishe
 The installed hdwalletv1 handshake does not attest the active network. No fake
 signature/payment result is substituted. See the [wallet integration notes](../frontend/src/features/wallet/README.md)
 and [completion checklist](../docs/completion-checklist.md).
+
+
+## Verification consistency and repair
+
+All invoice views, public checkout, dashboard counts and status filters calculate
+funding from allocated integer satoshis and the invoice confirmation threshold.
+Persisted state is updated by claims and invoice-level reconciliation in the same
+transaction. Reading an API response never refreshes chain verification timestamps.
+Provider failure preserves the previous evidence; successful checks (including a
+definitive missing/conflicted transaction) update its timestamp and current status.
+Completed outputs continue to be polled indefinitely for reorgs. A completed invoice
+does not require a recent address-discovery scan to prove its existing payments.
+
+Freshness is separate from payment status: evidence is stale after
+`max(120, 3 * BCH_RECONCILIATION_INTERVAL_SECONDS)` seconds. A stale confirmed receipt
+still reports its last known confirmed state, with a freshness warning. With the
+default 60-second interval this threshold is 180 seconds. Do not extend it merely
+to mask a failed or old worker. `verified_at` is the oldest successful check among
+credited receipt outputs, or null if snapshot evidence is incomplete.
+
+For a safe audit, from `backend`:
+
+```sh
+uv run python -m app.payments.repair --invoice PP-1287C335 --dry-run
+```
+
+Dry-run is the default and rolls back all proposed changes. The report includes
+stored versus calculated status, verification failures, frozen receipt evidence,
+and allocations outside the receipt. No output is attributed, moved, or deleted.
+After reviewing and explicitly approving record reconciliation, use `--apply`.
+The command is idempotent and preserves receipt snapshots and allocation history.
+An output outside the receipt may be a legitimate later payment or a historical
+misallocation; the chain cannot determine merchant intent. Such allocations need
+merchant review, not automatic reassignment.
+
+The FastAPI development reloader does not reload an existing worker. Stop the old
+worker and restart `uv run python -m app.payments.worker` after updating payment
+code or `.env`. Compose runs a dedicated `payment-worker` service; rebuild/recreate
+it with the API. Vercel's serverless API does not run this durable worker: deploy
+it as a separate long-running process with the same database, network, and BCH RPC
+configuration. See [development startup](../development.md).
+
+
+Allocation review identifies “Allocated to this request” or “Allocated to another
+request”. Owner IDs/references are returned only to an authorized merchant. The
+monitoring endpoint reports saved observations and scan health separately; an empty
+list after a failed/absent scan is not reported as successful payment discovery.
+The header's “Connecting wallet…” is WizardConnect, not the payment provider or an
+event stream. Server polling/verification does not depend on wallet connectivity.

@@ -223,7 +223,11 @@ class Invoice(InvoiceBase, table=True):
 
 
 class AddressReservation(SQLModel, table=True):
-    """Permanent tombstone: even deleted drafts must never recycle a destination."""
+    """Permanent merchant association, retained after invoice edits/deletion.
+
+    A null merchant blocks reuse where historical ownership is unknown/ambiguous.
+    invoice_id retains the original historical association, without a foreign key.
+    """
 
     __tablename__ = "address_reservation"
     __table_args__ = (
@@ -233,7 +237,26 @@ class AddressReservation(SQLModel, table=True):
     network: str = Field(max_length=20)
     address: str = Field(max_length=255)
     invoice_id: uuid.UUID = Field(index=True)
+    merchant_id: uuid.UUID | None = Field(default=None, index=True)
+    auto_allocate: bool = Field(default=False)
     created_at: datetime = Field(default_factory=get_datetime_utc)
+
+
+class DetectedOutput(SQLModel, table=True):
+    """Verified observation only; never included in invoice accounting."""
+
+    __tablename__ = "detected_output"
+    __table_args__ = (
+        UniqueConstraint("network", "txid", "vout", name="uq_detected_output"),
+    )
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    network: str = Field(max_length=20)
+    address: str = Field(max_length=255, index=True)
+    txid: str = Field(max_length=64)
+    vout: int
+    amount_sats: int = Field(sa_type=BigInteger)
+    confirmations: int
+    last_checked_at: datetime = Field(default_factory=get_datetime_utc)
 
 
 class InvoicePublic(InvoiceBase):

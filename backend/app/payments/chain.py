@@ -71,7 +71,7 @@ def normalize_address(value: str, network: str) -> str:
         raise ValueError("Unsupported BCH locking script size")
     if version >> 3 in (2, 3):
         # CashTokens-aware aliases lock to the same script. Canonicalize them so
-        # an alias cannot bypass the permanent destination reservation.
+        # an alias cannot bypass the permanent merchant association.
         decoded[0] &= 15
         acc = bits = 0
         digits = []
@@ -217,7 +217,7 @@ class BCHNodeProvider:
     def watch_address(self, address: str, network: str) -> None:
         self.check_network(network)
         self.check_watch_wallet()
-        # Fresh destinations are watched before checkout is published. No keys.
+        # Destinations are watched before checkout is published. No keys.
         self._call(
             "importaddress", [normalize_address(address, network), "proofpay", False]
         )

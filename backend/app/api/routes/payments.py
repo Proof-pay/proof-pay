@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import uuid
 from collections.abc import Iterator
 from datetime import timedelta
@@ -17,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models import AddressReservation, Invoice, Merchant, PaymentOutput, Receipt
+from app.models import DetectedOutput, Invoice, Merchant, PaymentOutput, Receipt
 from app.payments.chain import (
     BCHNodeProvider,
     ProviderError,
@@ -42,19 +43,27 @@ from app.payments.schemas import (
     ReceiptView,
 )
 from app.payments.service import (
+    associate_destination,
     aware,
+    invoice_status_expression,
     invoice_view,
     invoice_views,
     merchant_for_user,
     now,
     outputs,
     owned_invoice,
+    payment_state,
     public_view,
     receipt_view,
+    recheck_output,
     reconcile_claim,
+    refresh_state,
+    review_transaction,
+    scan_stale,
     sums,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["payments"])
 
 
@@ -151,12 +160,8 @@ def create_request(
         idempotency_key=idempotency_key,
         idempotency_hash=digest if idempotency_key else None,
     )
+    associate_destination(session, invoice, address, allow_automatic=True)
     session.add(invoice)
-    session.add(
-        AddressReservation(
-            network=invoice.network, address=address, invoice_id=invoice.id
-        )
-    )
     try:
         session.commit()
     except IntegrityError as exc:
@@ -168,11 +173,17 @@ def create_request(
                     Invoice.idempotency_key == idempotency_key,
                 )
             ).first()
-            if prior and prior.idempotency_hash == digest:
-                return invoice_view(session, prior)
+            if prior:
+                if prior.idempotency_hash == digest:
+                    return invoice_view(session, prior)
+                raise HTTPException(
+                    409, "Idempotency key already used for another request"
+                ) from exc
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        # Avoid logging SQL parameters, which can contain private payment details.
+        logger.error("Payment request integrity failure (constraint=%s)", constraint)
         raise HTTPException(
-            409,
-            "This destination is already reserved. Generate a fresh receiving address in your wallet.",
+            500, "Could not save the payment request. Please retry or contact support."
         ) from exc
     session.refresh(invoice)
     return invoice_view(session, invoice)
@@ -200,21 +211,8 @@ def list_requests(
     if sort not in {"-created_at", "created_at", "expires_at", "-expires_at"}:
         raise HTTPException(422, "Unsupported sort")
     stmt = select(Invoice).where(Invoice.merchant_id == merchant.id)
-    if status == "expired":
-        stmt = stmt.where(
-            or_(
-                col(Invoice.status) == "expired",
-                and_(
-                    col(Invoice.status) == "pending", col(Invoice.expires_at) <= now()
-                ),
-            )
-        )
-    elif status == "pending":
-        stmt = stmt.where(
-            col(Invoice.status) == "pending", col(Invoice.expires_at) > now()
-        )
-    elif status:
-        stmt = stmt.where(Invoice.status == status)
+    if status:
+        stmt = stmt.where(invoice_status_expression() == status)
     if search:
         term = f"%{search}%"
         stmt = stmt.where(
@@ -267,12 +265,8 @@ def update_request(
         "receiving_address" in data
         and data["receiving_address"] != invoice.receiving_address
     ):
-        session.add(
-            AddressReservation(
-                network=invoice.network,
-                address=data["receiving_address"],
-                invoice_id=invoice.id,
-            )
+        associate_destination(
+            session, invoice, data["receiving_address"], allow_automatic=True
         )
     for key, value in data.items():
         setattr(invoice, key, value)
@@ -293,19 +287,17 @@ def issue_request(
     invoice = owned_invoice(session, _merchant(session, user), invoice_id, lock=True)
     if invoice.status != "draft" or aware(invoice.expires_at) <= now():
         raise HTTPException(409, "Request cannot be issued")
-    reservation = session.exec(
-        select(AddressReservation).where(
-            AddressReservation.network == invoice.network,
-            AddressReservation.address == invoice.receiving_address,
+    associate_destination(session, invoice, invoice.receiving_address)
+    watched = session.exec(
+        select(Invoice.id).where(
+            Invoice.network == invoice.network,
+            Invoice.receiving_address == invoice.receiving_address,
+            col(Invoice.watched_at).is_not(None),
         )
     ).first()
-    if not reservation or reservation.invoice_id != invoice.id:
-        raise HTTPException(
-            409,
-            "This legacy destination is shared. Choose a fresh receiving address before issuing.",
-        )
     try:
-        BCHNodeProvider().watch_address(invoice.receiving_address, invoice.network)
+        if not watched:
+            BCHNodeProvider().watch_address(invoice.receiving_address, invoice.network)
     except ProviderError as exc:
         raise HTTPException(
             503,
@@ -351,6 +343,96 @@ def delete_request(
     _commit(session)
 
 
+@router.get("/payment-requests/{invoice_id}/detected")
+def detected_payments(
+    session: SessionDep, user: CurrentUser, invoice_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    invoice = owned_invoice(session, _merchant(session, user), invoice_id)
+    associate_destination(session, invoice, invoice.receiving_address)
+    rows = session.exec(
+        select(DetectedOutput)
+        .outerjoin(
+            PaymentOutput,
+            and_(
+                col(PaymentOutput.network) == col(DetectedOutput.network),
+                col(PaymentOutput.txid) == col(DetectedOutput.txid),
+                col(PaymentOutput.vout) == col(DetectedOutput.vout),
+            ),
+        )
+        .where(
+            DetectedOutput.network == invoice.network,
+            DetectedOutput.address == invoice.receiving_address,
+            col(PaymentOutput.id).is_(None),
+        )
+        .order_by(col(DetectedOutput.last_checked_at).desc())
+        .limit(100)
+    ).all()
+    return [
+        {
+            "txid": row.txid,
+            "vout": row.vout,
+            "amount_sats": row.amount_sats,
+            "confirmations": row.confirmations,
+            "last_checked_at": row.last_checked_at,
+        }
+        for row in rows
+    ]
+
+
+@router.get("/payment-requests/{invoice_id}/monitoring")
+def payment_monitoring(
+    session: SessionDep, user: CurrentUser, invoice_id: uuid.UUID
+) -> dict[str, Any]:
+    invoice = owned_invoice(session, _merchant(session, user), invoice_id)
+    successful = invoice.last_scanned_at
+    attempted = invoice.scan_attempted_at
+    failed = attempted is not None and (
+        successful is None or aware(attempted) > aware(successful)
+    )
+    status = (
+        "failed"
+        if failed
+        else "never"
+        if successful is None
+        else "stale"
+        if scan_stale(invoice)
+        else "current"
+    )
+    return {
+        "scan_status": status,
+        "last_successful_scan_at": successful,
+        "last_scan_attempt_at": attempted,
+        "outputs": detected_payments(session, user, invoice_id),
+    }
+
+
+@router.get("/payment-requests/{invoice_id}/transactions/{txid}")
+def review_payment(
+    session: SessionDep, user: CurrentUser, invoice_id: uuid.UUID, txid: str
+) -> list[dict[str, Any]]:
+    invoice = owned_invoice(session, _merchant(session, user), invoice_id, lock=True)
+    provider = BCHNodeProvider()
+    result = review_transaction(session, invoice, txid, provider)
+    assigned_here = [row["vout"] for row in result if row["assigned_to_this_invoice"]]
+    if assigned_here:
+        payments = session.exec(
+            select(PaymentOutput).where(
+                PaymentOutput.invoice_id == invoice.id,
+                PaymentOutput.txid == txid.lower(),
+                col(PaymentOutput.vout).in_(assigned_here),
+            )
+        ).all()
+        for payment in payments:
+            if not recheck_output(session, payment, provider, update_state=False):
+                raise HTTPException(
+                    503,
+                    "Could not refresh allocated payment evidence; retry or wait for the payment worker",
+                )
+        refresh_state(session, invoice)
+    _commit(session)
+    return result
+
+
 @router.post("/payment-requests/{invoice_id}/claims/{txid}", response_model=InvoiceView)
 def claim_transaction(
     session: SessionDep,
@@ -367,6 +449,12 @@ def claim_transaction(
             session, invoice, txid, BCHNodeProvider(), claim.vouts if claim else None
         )
         _commit(session)
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            409,
+            "Transaction output already allocated by a concurrent claim; refresh and retry",
+        ) from exc
     except Exception:
         session.rollback()
         raise
@@ -615,13 +703,10 @@ def dashboard_summary(session: SessionDep, user: CurrentUser) -> dict[str, Any]:
             p.amount_sats
             for p in grouped.get(invoice.id, [])
             if p.status != "orphaned"
+            and p.network == invoice.network
             and p.confirmations >= invoice.required_confirmations
         )
-        effective = (
-            "expired"
-            if invoice.status == "pending" and aware(invoice.expires_at) <= now()
-            else invoice.status
-        )
+        effective = payment_state(invoice, grouped.get(invoice.id, [])).status
         counts[effective] += 1
         if effective == "pending":
             outstanding += max(
